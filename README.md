@@ -1,2 +1,2 @@
-# clinical-ie
-Clinical information extraction using ontologies and constrained decoding
+# Clinical Analysis using Large Language Models and Ontologies
+Clinical information extraction and summarization using ontologies and constrained decoding
