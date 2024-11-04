@@ -1,8 +1,8 @@
-import pandas as pd
 import logging
 
-from src.filter import ClinicalAdmissionFilter
+import pandas as pd
 
+from src.filter import ClinicalAdmissionFilter
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +45,13 @@ class MimicLoader:
 
     def format(self, remove_admissions_without_summary: bool = True) -> pd.DataFrame:
         """
-        Regroups all notes from the same admission, sorts notes of the same admission based on the date and time. Removes
-        clinical notes that 
+        Regroups all notes from the same admission, sorts notes of the same admission based on the date and time.
+
+        Args:
+            remove_admissions_without_summary: Remove all admission notes that do not contain a discharge summary
         """
         assert self.data is not None, 'The load() function must be called prior to the format() function'
 
-        if self.formatted_data is not None:
-            return self.formatted_data
-        
         # Remove rows with N/A in the columns TEXT, 'HADM_ID', 'CHARTDATE', 'CATEGORY' or 'DESCRIPTION'
         formatted_data = self.data[self.data['TEXT'].notna()]
         formatted_data = formatted_data[formatted_data['HADM_ID'].notna()]
