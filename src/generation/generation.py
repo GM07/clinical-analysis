@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import ClassVar, Dict, List, Tuple
 from collections import Counter
 import ast
 import os
@@ -16,20 +16,12 @@ import pandas as pd
 
 from src.utils import clear_gpu_cache
 from src.domain_adaptation.domain_class_frequency import DomainClassFrequency
-from src.generation.ontology_beam_scorer import OntologyBeamScorer, OntologyBeamScorerConfig, GenerationConfig
-# from src.preprocessor import ClinicalNoteProcessor, preprocess_clinical_notes
+from src.generation.ontology_beam_scorer import OntologyBeamScorer, OntologyBeamScorerConfig, GenerationInput, GenerationConfig
 from src.generation.chat_template import ChatTemplate
 from src.ontology.annotator import AnnotationMatch, Annotator
 from src.ontology.snomed import Snomed
 
 logger = logging.getLogger(__name__)
-
-@dataclass
-class GenerationInput:
-
-    prompts: List[str] # Clinical note + Question
-    clinical_notes: List[str] # Clinical note
-    concept_ids: List[str] # Concept ids
 
 class OntologyConstrainedModel:
     """
@@ -241,7 +233,7 @@ BASE_PROMPT_TEMPLATE="""Here is a clinical note about a patient :
 -------------------
 {clinical_note}
 -------------------
-In a short sentence, extract the information that is related to the "{label}" medical concept from the clinical note. If the concept is not mentioned in the note, respond with 'N/A'.
+In a short sentence, extract the information that is related to the "{label}" medical concept from the clinical note. If the concept is not mentioned in the note, respond with 'N/A'. Only output the extracted information.
 """
 
 class OntologyPromptTemplate:

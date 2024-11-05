@@ -1,16 +1,26 @@
 
 
-from transformers import BeamSearchScorer
-from rouge_score import rouge_scorer
-
-from typing import Dict, List, Optional, Tuple, Union, ClassVar
 from dataclasses import dataclass
+from typing import ClassVar, Dict, List, Optional, Tuple, Union
 import time
-import torch
 
-from src.generation.generation import GenerationInput
+
+import torch
+from rouge_score import rouge_scorer
+from transformers import BeamSearchScorer
+
 from src.ontology.annotator import Annotator
 from src.ontology.snomed import Snomed
+
+# group_size = nb_beams / nb_beam_groups
+# input_size = batch_size * group_size
+
+@dataclass
+class GenerationInput:
+
+    prompts: List[str] # Clinical note + Question
+    clinical_notes: List[str] # Clinical note
+    concept_ids: List[str] # Concept ids
 
 @dataclass
 class GenerationConfig:
@@ -42,8 +52,32 @@ class GenerationConfig:
     # the decoding process
     exclude_ids: ClassVar[set[str]] = set([]) # set(['362981000', '419891008', '106237007'])
     
-# group_size = nb_beams / nb_beam_groups
-# input_size = batch_size * group_size
+    @classmethod
+    def greedy_search(cls):
+        """
+        Returns an instance of this class leading to greedy search
+        """
+        return cls()
+
+    @classmethod
+    def beam_search(cls):
+        """
+        Returns an instance of this class leading to diverse beam search
+        """
+        instance = cls()
+        instance.use_beam_search = True
+        instance.normal_beam_search = True
+        return instance
+
+    @classmethod
+    def ontology_beam_search(cls):
+        """
+        Returns an instance of this class leading to ontology-based beam search
+        """
+        instance = cls()
+        instance.use_beam_search = True
+        instance.score_boost_factors = [3.0, 1.0, 10.0]
+        return instance
 
 class OntologyBeamScorerConfig:
     """
