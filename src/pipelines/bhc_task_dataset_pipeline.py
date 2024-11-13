@@ -19,15 +19,17 @@ class BhcTaskDatasetPipeline(Pipeline):
         mimic_path: str, 
         output_file_path: str,
         tokenizer_path: str, 
-        max_nb_notes: int = 10, 
-        max_tokens_per_note: int = 2048
+        max_nb_notes_per_adm: int = 10, 
+        max_tokens_per_note: int = 2048,
+        max_total_nb_notes: int = None,
     ):
-        super().__init__(output_file_path)
+        self.output_file_path = output_file_path
         self.mimic_path = mimic_path
         self.tokenizer_path = tokenizer_path
-        self.max_nb_notes = max_nb_notes
+        self.max_nb_notes_per_adm = max_nb_notes_per_adm
         self.max_tokens_per_note = max_tokens_per_note
-        logger.info(f'[INIT] Pipeline initialised with self.max_nb_notes={self.max_nb_notes}, self.max_tokens_per_note={self.max_tokens_per_note}')
+        self.max_total_nb_notes = max_total_nb_notes
+        logger.info(f'[INIT] Pipeline initialised with self.max_nb_notes_per_adm={self.max_nb_notes_per_adm}, self.max_tokens_per_note={self.max_tokens_per_note}')
 
 
     def __call__(self):
@@ -42,11 +44,24 @@ class BhcTaskDatasetPipeline(Pipeline):
         logger.info(f'Number of clinical notes after formatting : {len(formatted_data)}')
 
         tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_path)
-        filter = ComposedFilter([NoteCountFilter(self.max_nb_notes), TokenLengthFilter(tokenizer, self.max_tokens_per_note)])
+        filter = ComposedFilter([NoteCountFilter(self.max_nb_notes_per_adm), TokenLengthFilter(tokenizer, self.max_tokens_per_note)])
         filtered_data = loader.filter(filter)
 
         logger.info(f'Number of admissions after filtering : {len(filtered_data.HADM_ID.unique())}')
         logger.info(f'Number of clinical notes after filtering : {len(filtered_data)}')
+
+        if self.max_total_nb_notes is not None:
+            # Get all rows up to and including the complete last admission
+            mask = (filtered_data['HADM_ID'].isin(
+                filtered_data.iloc[:self.max_total_nb_notes]['HADM_ID'].unique()
+            ))
+
+            capped_data = filtered_data[mask]
+
+            logger.info(f'Number of admissions after capping to {self.max_total_nb_notes} : {len(capped_data.HADM_ID.unique())}')
+            logger.info(f'Number of clinical notes after capping to {self.max_total_nb_notes} : {len(capped_data)}')
+            capped_data.to_csv(self.output_file_path)
+            return
 
         filtered_data.to_csv(self.output_file_path)
 

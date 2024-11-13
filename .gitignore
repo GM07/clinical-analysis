@@ -1,6 +1,8 @@
 # Personal files
 config.ini
 notebooks/
+commands.md
+logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -62,10 +62,18 @@ class MimicLoader:
         # Sort according to HADM_ID, CHARTDATE and CHARTTIME
         formatted_data = formatted_data.sort_values(by=['HADM_ID', 'CHARTDATE', 'CHARTTIME'])
 
-        # Remove notes without a discharge summary
+        # Remove notes without a discharge summary (notes with more than 1 discharge summary are also removed)
         if remove_admissions_without_summary:
-            only_discharge = formatted_data[formatted_data['CATEGORY'] == 'Discharge summary']['HADM_ID'].unique()
-            formatted_data = formatted_data[formatted_data['HADM_ID'].isin(only_discharge)]    
+
+            # Count discharge summaries per admission
+            discharge_counts = formatted_data[formatted_data['CATEGORY'] == 'Discharge summary']['HADM_ID'].value_counts()
+            
+            # Get admissions with exactly one discharge summary
+            single_discharge_admissions = discharge_counts[discharge_counts == 1].index
+            
+            # Filter the original dataframe
+            formatted_data = formatted_data[formatted_data['HADM_ID'].isin(single_discharge_admissions)]
+            
         else:
             formatted_data = formatted_data
         

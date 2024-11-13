@@ -354,8 +354,8 @@ class OntologyBasedPrompter:
         Tuple of dictionaries where the first dictionary contains {concept_id: extraction} and the 
         second dictionary contains {concept_label: extraction}
         """
-        self.attributes.clear()
-        self.attributes_by_id.clear()
+        self.attributes = []
+        self.attributes_by_id = []
 
         for i, note in enumerate(clinical_notes):
             self.current_note_id = i
@@ -363,7 +363,7 @@ class OntologyBasedPrompter:
             self.attributes.append({})
             self.start(note, top_n=top_n, batch_size=batch_size, generation_config=generation_config)
 
-        return self.attributes_by_id, self.attributes
+        return self.attributes_by_id.copy(), self.attributes.copy()
     
     def start(
         self, 
@@ -385,9 +385,6 @@ class OntologyBasedPrompter:
         Tuple of dictionaries where the first dictionary contains {concept_id: extraction} and the 
         second dictionary contains {concept_label: extraction}
         """ 
-        # stack = []
-        # stack.append(self.snomed.base_class.id)
-
         most_frequent_concepts = self.get_most_frequent_concepts(clinical_note, top_n=top_n)
 
         if len(most_frequent_concepts) == 0:
@@ -402,19 +399,6 @@ class OntologyBasedPrompter:
             concept_ids = most_frequent_concepts[start:end]
             self.extract_attribute(clinical_note, concept_ids, generation_config=generation_config)
 
-        # iteration = 1
-        # while len(stack) > 0:
-            
-        #     start = max(0, (iteration - 1) * batch_size)
-        #     end = min(len(most_frequent_concepts), iteration * batch_size)
-        #     current_node_ids = most_frequent_concepts[start:end]
-        #     self.extract_attribute(clinical_note, current_node_ids, generation_config=generation_config)
-        #     iteration += 1
-        #     if iteration * batch_size > len(most_frequent_concepts):
-        #         break
-        #     else:
-        #         continue
-    
     def extract_attribute(
         self, 
         clinical_note: str, 
@@ -440,9 +424,8 @@ class OntologyBasedPrompter:
         generation_input = GenerationInput(prompts=prompts, clinical_notes=[clinical_note] * len(prompts), concept_ids=concept_ids)
         answers = self.constrained_model.generate(generation_input, generation_config)
 
-        if logger.level > 0:
-            for answer in answers:
-                logger.debug(f'\n{Color.RED}[Answer]{Color.OFF} : {answer.strip()}')
+        # for answer in answers:
+            # logger.info(f'\n{Color.RED}[Answer]{Color.OFF} : {answer.strip()}')
         
         # Storing answers
         self.store_extractions_from_generation(concept_ids, answers)
@@ -467,13 +450,12 @@ class OntologyBasedPrompter:
                 'properties': properties
             })
 
-            if logger.level > 0:
-                prompt = self.template.question_template.format_map({
-                    'clinical_note': 'clinical note',
-                    'label': label,
-                    'properties': properties
-                })
-                logger.debug(f'\n{Color.CYAN}[Asking]{Color.OFF} : {prompt}')
+            # prompt = self.template.question_template.format_map({
+            #     'clinical_note': clinical note,
+            #     'label': label,
+            #     'properties': properties
+            # })
+            # logger.info(f'\n{Color.CYAN}[Asking]{Color.OFF} : {prompt}')
                 
             prompts.append(prompt)
         return prompts

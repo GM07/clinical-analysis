@@ -122,3 +122,27 @@ class ModelRegistry:
         if self.local:
             return self.local_folder_path + checkpoint
         return checkpoint
+
+    @staticmethod
+    def load_single_checkpoint(checkpoint: str, loading_config: LoadingConfig = LoadingConfig()):
+        """
+        Loads a single checkpoint. Useful if only one model needs to be loaded. If local is
+        `True`, we expect the model to be loaded from disk. Otherwise, the model will be fetched.
+
+        Args:
+            checkpoint: Model checkpoint. If path does not exist locally, the model will be 
+            fetched from HuggingFace
+            
+            loading_config: Config on how to load the model
+        """
+        local = os.path.exists(checkpoint)
+        if local:
+            logger.info(f'Loading model locally from {checkpoint}')
+            checkpoint_id = os.path.basename(checkpoint)
+        else:
+            logger.info(f'Fetching model from {checkpoint}')
+
+        local_folder_path = checkpoint.replace(checkpoint_id, '') if local else ''
+
+        registry = ModelRegistry(local=local, local_folder_path=local_folder_path)
+        return registry.load_checkpoint(checkpoint_id, loading_config=loading_config)

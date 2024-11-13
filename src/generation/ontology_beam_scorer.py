@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import ClassVar, Dict, List, Optional, Tuple, Union
 import time
-
+import logging
 
 import torch
 from rouge_score import rouge_scorer
@@ -14,6 +14,8 @@ from src.ontology.snomed import Snomed
 
 # group_size = nb_beams / nb_beam_groups
 # input_size = batch_size * group_size
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class GenerationInput:
