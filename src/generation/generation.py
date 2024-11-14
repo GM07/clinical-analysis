@@ -130,6 +130,7 @@ class OntologyConstrainedModel:
             generated = self.model.generate(
                 **model_input, 
                 max_new_tokens=128,
+                temperature=None,
                 pad_token_id=self.tokenizer.pad_token_id,
             )
 
@@ -188,10 +189,14 @@ class OntologyConstrainedModel:
                 'diversity_penalty': generation_config.diversity_penalty,
                 'num_return_sequences': 1,
                 'max_length': max_length,
-                'eos_token_id': self.tokenizer.eos_token_id
+                'eos_token_id': self.tokenizer.eos_token_id,
+                'bos_token_id': self.tokenizer.bos_token_id,
+                'pad_token_id': self.tokenizer.pad_token_id
             }
-            hf_gen_config, _ = self.model._prepare_generation_config(None, **config_dict)
-            
+            hf_gen_config, model_kwargs = self.model._prepare_generation_config(None, **config_dict)
+            kwargs_has_attention_mask = model_kwargs.get("attention_mask", None) is not None
+            self.model._prepare_special_tokens(hf_gen_config, kwargs_has_attention_mask, device=self.model.device)
+            # print(hf_gen_config.__dir__())
             logits_processor = LogitsProcessorList([])
             logits_warper = self.model._get_logits_processor(
                 generation_config=hf_gen_config,
@@ -210,6 +215,8 @@ class OntologyConstrainedModel:
                     MaxLengthCriteria(max_length=max_length),
                 ]),
                 pad_token_id=self.tokenizer.pad_token_id,
+                generation_config=hf_gen_config,
+                synced_gpus=False
             )
             final_answers = self.get_final_generation(prompts_tokenized['input_ids'], generations)
 

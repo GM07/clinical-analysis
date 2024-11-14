@@ -99,6 +99,7 @@ class ExtractionPipeline(Pipeline):
                 batch_size=extraction_config.batch_size,
                 generation_config=normal_config
             )
+            print('normal : ', normal_attr_by_id)
 
             beam_attr_by_id, _ = prompter.start_multiple(
                 clinical_notes=[clinical_note],
@@ -107,12 +108,16 @@ class ExtractionPipeline(Pipeline):
                 generation_config=beam_config
             )
 
+            print('beam : ', beam_attr_by_id)
+
             constrained_attr_by_id, _ = prompter.start_multiple(
                 clinical_notes=[clinical_note],
                 top_n=extraction_config.nb_concepts,
                 batch_size=extraction_config.batch_size,
                 generation_config=constrained_config
             )
+
+            print('constrained : ', constrained_attr_by_id)
 
             results.append((i, (normal_attr_by_id, beam_attr_by_id, constrained_attr_by_id)))
 
