@@ -37,12 +37,16 @@ class Dataset:
         # self.data = load_dataset('csv', data_dir=self.dataset_folder_path, data_files={'data': self.dataset_name})['data']
         self.data = pd.read_csv(self.dataset_path)
 
-    def partition(self, output_folder_path: str, nb_partitions: int = None, size_of_partition: int = None, max_rows: int = None):
+    def partition(self, output_folder_path: str, nb_partitions: int = None, size_of_partition: int = None, max_rows: int = None, overwrite: bool = False):
         """
         Partitions a dataset into multiple partitions (or shards) that can be used by different jobs.
 
         Args:
-            output_folder_path: Path where the partition
+            output_folder_path: Path where the partition will be stored
+            nb_partitions: Number of partitions to generate
+            size_of_partition: Size of a single partition. If provided, will overide `nb_partitions`
+            max_rows: Number of rows to consider when generating the partitions
+            overwrite: Whether to overwrite a partition if a partition is already present
         """
         assert nb_partitions is None or size_of_partition is None, f"One of the arguments `nb_partitions` or `size_of_partition` must be null"
         assert nb_partitions is not None or size_of_partition is not None, f"One of the arguments `nb_partitions` or `size_of_partition` must be provided"
@@ -150,15 +154,20 @@ class DatasetPartition:
         """
         self.data = pd.read_csv(self.original_dataset_path)
 
-    def save(self, saving_path: str = None):
+    def save(self, saving_path: str = None, overwrite: bool = False):
         """
         Saves the partition into a single file
 
         Args:
             saving_path: Path where the partition will be saved. This will override `self.saving_path` if provided
+            overwrite: Whether to overwrite a partition if it already exists
         """
         if saving_path is None:
             saving_path = self.saving_path
+
+        if not overwrite and os.path.exists(saving_path):
+            logger.info(f'Partition already exists at {saving_path}')
+            return
 
         self.data = None
         joblib.dump(self, saving_path)
@@ -258,8 +267,12 @@ class DatasetPartitionAnalyzer:
         for partition_file in partition_files:
             if len(partition_file) < len(self.extension) or partition_file[-len(self.extension):] != self.extension:
                 continue
-            partition = DatasetPartition.from_save(os.path.join(self.partition_folder_path, partition_file))
-            self.partitions.append((partition_file, partition))
+            logger.info(f'Loading {partition_file}')
+            try:
+                partition = DatasetPartition.from_save(os.path.join(self.partition_folder_path, partition_file))
+                self.partitions.append((partition_file, partition))
+            except EOFError:
+                logger.warning(f'Partition could not be loaded {partition_file}')
 
         self.partitions.sort(key=lambda x: x[1].start)
         self.partition_file_names = list(map(lambda x: x[0], self.partitions))
