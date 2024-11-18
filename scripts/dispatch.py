@@ -27,8 +27,8 @@ def main():
 
     analyzer = DatasetPartitionAnalyzer(args.partition_folder)
     partition_files = analyzer.get_next_partitions(args.nb_jobs)
-
-    model_arg = args.model if args.model else ''
+    
+    model_arg = (args.model if args.model[-1] == '/' else args.model + '/') if args.model else ''
     for partition_file in partition_files:
         command = ['sbatch', f'{args.program}', f'{partition_file}', model_arg]
         print(command)

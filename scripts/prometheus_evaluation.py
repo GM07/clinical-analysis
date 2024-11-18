@@ -5,7 +5,7 @@ from src.dataset import Dataset, DatasetPartition
 from src.pipelines.prometheus_pipeline import PrometheusEvaluationPipeline
 
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.INFO,
     format='%(levelname)s - %(message)s',
     force=True # This ensures we override any existing logger configuration
 )

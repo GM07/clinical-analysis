@@ -71,7 +71,7 @@ class Dataset:
             end = min(len(self.data), (i + 1) * size_of_partition)
 
             partition = DatasetPartition(self.dataset_path, start, end, saving_path=output_folder_path + f'partition_{start}_{end}.partition')
-            partition.save()
+            partition.save(overwrite=overwrite)
 
             current_rows_processed += end - start
 
@@ -145,7 +145,7 @@ class DatasetPartition:
             self.results[id] = value 
 
         tmp_data = self.data
-        self.save()
+        self.save(overwrite=True)
         self.data = tmp_data
 
     def load(self):
@@ -154,7 +154,7 @@ class DatasetPartition:
         """
         self.data = pd.read_csv(self.original_dataset_path)
 
-    def save(self, saving_path: str = None, overwrite: bool = False):
+    def save(self, saving_path: str = None, overwrite: bool = True):
         """
         Saves the partition into a single file
 
