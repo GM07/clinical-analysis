@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ExtractionPipelineConfig:
 
-    batch_size: int = 5
+    batch_size: int = 2
     nb_concepts: int = 5
     save_frequency: int = 1
 

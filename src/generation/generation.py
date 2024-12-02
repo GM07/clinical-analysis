@@ -20,6 +20,7 @@ from src.generation.ontology_beam_scorer import OntologyBeamScorer, OntologyBeam
 from src.generation.chat_template import ChatTemplate
 from src.ontology.annotator import AnnotationMatch, Annotator
 from src.ontology.snomed import Snomed
+from src.generation.templates import BASE_PROMPT_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ class OntologyConstrainedModel:
         Args:
             prompts: List of prompts to send to the model
         """
-        if self.apply_chat_template:
+        if self.apply_chat_template and self.tokenizer.chat_template is not None:
             prompts = self.chat_template.batched_single_user_entry(prompts)
         
         model_input = self.tokenizer(
@@ -236,12 +237,6 @@ class OntologyConstrainedModel:
         return self.beam_search(generation_input, generation_config=generation_config)
 
 
-BASE_PROMPT_TEMPLATE="""Here is a clinical note about a patient : 
--------------------
-{clinical_note}
--------------------
-In a short sentence, extract the information that is related to the "{label}" medical concept from the clinical note. If the concept is not mentioned in the note, respond with 'N/A'. Only output the extracted information.
-"""
 
 class OntologyPromptTemplate:
 

@@ -3,6 +3,7 @@ import logging
 import os
 from typing import Any, List, Tuple
 import joblib
+import ast
 
 from colorist import Color
 
@@ -108,7 +109,6 @@ class Dataset:
                     initial_dataset[column_name].iloc[partition.start + i] = res
 
         initial_dataset.to_csv(output_file_path, index=False)
-
 
 class DatasetPartition:
     """
@@ -328,3 +328,63 @@ class DatasetPartitionAnalyzer:
             print(f'{partition.start}-{partition.end}: {color}[{processed_bar_string}]{Color.OFF} {percentage_processed:.1f}% ({processed_length} / {partition.nb_elements})')
 
         print('=' * 100)
+
+class ExtractionDataset(Dataset):
+    """
+    Dataset format used to store the extractions of each clinical note.
+
+    The dataset should have at least these columns : 'TEXT', 'normal', 'beam' and 'constrained'
+    """
+
+    RESULT_COLUMNS = ['normal', 'beam', 'constrained']
+    CLINICAL_NOTE_COLUMN = 'TEXT'
+    CLINICAL_NOTE_ID_COLUMN = 'ROW_ID'
+
+    def __init__(self, dataset_path: str):
+        super().__init__(dataset_path)
+
+        self.verify()
+
+    def verify(self):
+        """Verifies that the data loaded is conform to the extraction dataset template"""
+        error = f'The dataset is not a valid extraction dataset, missing the column : '
+        assert 'TEXT' in self.data.columns, error + 'TEXT'
+        assert 'normal' in self.data.columns, error + 'normal'
+        assert 'beam' in self.data.columns, error + 'beam'
+        assert 'constrained' in self.data.columns, error + 'constrained'
+
+    def clinical_note_column(self):
+        return ExtractionDataset.CLINICAL_NOTE_COLUMN
+
+    def clinical_note_id_column(self):
+        return ExtractionDataset.CLINICAL_NOTE_ID_COLUMN
+
+    def results_columns(self):
+        return ExtractionDataset.RESULT_COLUMNS
+
+    def clinical_notes(self):
+        return self.data['TEXT'].tolist()
+
+    def __extractions__(self, column):
+        """
+        Returns the extractions of a column converted to a dictionary
+        Args:
+            column: Column containing the extractions
+        """
+        extractions = []
+        for normal in self.data[column]:
+            try:
+                extraction = ast.literal_eval(normal)[0]
+            except ValueError:
+                extraction = {}
+            extractions.append(extraction)
+        return extractions
+
+    def greedy_extractions(self):
+        return self.__extractions__('normal')
+    
+    def beam_extractions(self):
+        return self.__extractions__('beam')
+    
+    def constrained_extractions(self):
+        return self.__extractions__('constrained')

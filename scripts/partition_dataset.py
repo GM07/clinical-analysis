@@ -14,7 +14,7 @@ parser = ArgumentParser(description='Program that divides a dataset into multipl
 parser.add_argument('--dataset', type=str, required=True, help='Path to .csv file of the dataset')
 parser.add_argument('--out', type=str, required=True, help='Output path where the partitioned dataset will be saved')
 parser.add_argument('--size', type=str, required=True, help='Size of a partition')
-parser.add_argument('--max_rows', type=int, required=True, help='Max number of rows to be partitioned')
+parser.add_argument('--max_rows', type=int, required=False, help='Max number of rows to be partitioned')
 
 def main():
 
@@ -23,7 +23,7 @@ def main():
     print('Called with arguments : ', args)
 
     dataset = Dataset(args.dataset)
-    dataset.partition(output_folder_path=args.out, size_of_partition=args.size, max_rows=args.max_rows)
+    dataset.partition(output_folder_path=args.out, size_of_partition=int(args.size), max_rows=int(args.max_rows) if args.max_rows else None)
 
 if __name__ == '__main__':
     main()
