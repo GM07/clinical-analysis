@@ -1,12 +1,13 @@
 import ast
 import re
-from typing import List
 import itertools
+import matplotlib.pyplot as plt
+from src.dataset import Dataset
+import re
 
 import pandas as pd
 
 from src.dataset import Dataset, ExtractionDataset
-from src.model_registry import LoadingConfig, ModelRegistry
 from src.generation.templates import BASE_PROMPT_TEMPLATE
 from src.ontology.snomed import Snomed
 
@@ -180,7 +181,6 @@ class PrometheusResultParser:
     def __init__(self, prom_result_path: str):
         self.prom_result_path = prom_result_path
         self.dataset = PrometheusResultDataset(self.prom_result_path)
-
         self.parse()
 
     def parse(self):
@@ -190,17 +190,21 @@ class PrometheusResultParser:
         decision_pattern = r'(?:\[RESULT\]) (A|B)'
         decision = []
         for values in self.dataset.data['result']:
+            if not isinstance(values, str):
+                decision.append('tie')
+                continue
+
             matches = re.findall(decision_pattern, values)
             if len(matches) == 0:
                 decision.append('tie')
             else:
-                decision.append(matches[0].strip())
+                decision.append(matches[0].lower().strip())
 
         self.dataset.data[PrometheusResultParser.DECISION_COLUMN] = decision
-
+            
     def calculate_win_rates(self):
         """
-        Calculate win rates between specific methods from the dataset
+        Calculate win rates between specific methods from a dataframe
         """
         # Get unique methods
         methods = set(self.dataset.data['a'].unique()) | set(self.dataset.data['b'].unique())
@@ -231,8 +235,8 @@ class PrometheusResultParser:
                 # Count ties
                 ties = len(matches[matches['decision'] == 'tie'])
                 
-                # Calculate win rate
-                win_rate = (wins + ties/2) / total_matches * 100
+                # Calculate win rate : a tie is considered as half a win for each method
+                win_rate = (wins) / (total_matches - ties) * 100
                 
                 results[method1][method2] = {
                     'win_rate': round(win_rate, 2),
@@ -242,3 +246,68 @@ class PrometheusResultParser:
                 }
                 
         return results
+
+    def plot_win_rates(self, title='Head-to-Head Performance (excluding ties)'):
+        """
+        Plots a graph showing the win rates of different methods evaluated using Prometheus
+
+        Args:
+            title: Title shown above the plot
+        """
+        results = self.calculate_win_rates()
+        
+        # Prepare data with specific ordering and grouping
+        ordered_data = []
+        groups = results.keys()
+        
+        for method in groups:
+            opponents = [opp for opp in results[method].keys()]
+            for opponent in opponents:
+                stats = results[method][opponent]
+                non_tie_matches = stats['total_matches'] - stats['ties']
+                win_pct = (stats['wins'] / non_tie_matches * 100)
+                ordered_data.append({
+                    'matchup': f"{method} vs {opponent}",
+                    'wins': win_pct,
+                    'losses': 100 - win_pct
+                })
+        
+        df = pd.DataFrame(ordered_data)
+        
+        # Create plot
+        plt.figure(figsize=(12, 6))
+        
+        # Plot stacked bars with gaps between groups
+        height = 0.6
+        num_methods = len(groups)
+        matches_per_method = len(ordered_data) // num_methods
+        y_pos = []
+        current_pos = 0
+        
+        for i in range(num_methods):
+            group_positions = [current_pos + j for j in range(matches_per_method)]
+            y_pos.extend(group_positions)
+            current_pos += matches_per_method + 1  # Add gap between groups
+        
+        plt.barh(y_pos, df['wins'], height=height, color='#2ecc71', label='Wins')
+        plt.barh(y_pos, df['losses'], height=height, left=df['wins'], color='#e74c3c', label='Losses')
+        
+        # Customize plot
+        plt.yticks(y_pos, df['matchup'])
+        plt.xlabel('Percentage')
+        plt.title(title)
+        plt.legend(loc='lower right')
+        
+        # Add percentage labels
+        for i, pos in enumerate(y_pos):
+            win_x = df['wins'].iloc[i] / 2
+            plt.text(win_x, pos, f"{df['wins'].iloc[i]:.1f}%", 
+                    ha='center', va='center', color='white')
+            
+            loss_x = df['wins'].iloc[i] + df['losses'].iloc[i] / 2
+            plt.text(loss_x, pos, f"{df['losses'].iloc[i]:.1f}%", 
+                    ha='center', va='center', color='white')
+        
+        plt.grid(axis='x', alpha=0.3)
+        plt.tight_layout()
+        return plt

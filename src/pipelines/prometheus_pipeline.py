@@ -26,7 +26,7 @@ class PrometheusEvaluationPipeline:
         self.model, self.tokenizer = ModelRegistry.load_single_checkpoint(self.checkpoint_path, loading_config=self.loading_config)
 
 
-    def __call__(self, partition: DatasetPartition, batch_size: int = 8):
+    def __call__(self, partition: DatasetPartition, batch_size: int = 4):
         """
         Executes the pipeline on the dataset
 

@@ -82,7 +82,7 @@ class Dataset:
     @staticmethod
     def partitions_to_file(partition_folder_path: str, output_file_path: str, column_names: List[str] = ['normal', 'beam', 'constrained']):
         """
-        Will create a csv file using the results of all partitions in `partition_folder_path`
+        Will create a csv file by merging the results of all partitions in `partition_folder_path`
 
         Args:
             partition_folder_path: Path of the folder containing all partitions
@@ -95,9 +95,14 @@ class Dataset:
             return pd.DataFrame([])
 
         initial_dataset = pd.read_csv(analyzer.partitions[0].original_dataset_path)
-        nb_results = len(analyzer.partitions[0].results[0])
-        assert nb_results == len(column_names), 'The column names are not equal to the number of results per sample'
-
+        # nb_results = len(analyzer.partitions[0].results[0])
+        # assert nb_results == len(column_names), 'The column names are not equal to the number of results per sample'
+        if isinstance(analyzer.partitions[0].results[0], list) or isinstance(analyzer.partitions[0].results[0], tuple):
+            nb_results = len(analyzer.partitions[0].results[0])
+        else:
+            nb_results = 1
+        assert nb_results == len(column_names), f'The column names are not equal to the number of results per sample'
+            
         for column_name in column_names:
             initial_dataset[f'{column_name}'] = None
 
@@ -105,10 +110,16 @@ class Dataset:
             for i, result_val in partition.results.items():
                 if result_val is None:
                     continue
-                for res, column_name in zip(result_val, column_names):
-                    initial_dataset[column_name].iloc[partition.start + i] = res
-
+                    
+                if isinstance(result_val, list) or isinstance(result_val, tuple):
+                    for res, column_name in zip(result_val, column_names):
+                        initial_dataset[column_name].iloc[partition.start + i] = res
+                else:
+                    initial_dataset[column_names[0]].iloc[partition.start + i] = result_val
+        
+        initial_dataset = initial_dataset.loc[:, ~initial_dataset.columns.str.contains('^Unnamed')]
         initial_dataset.to_csv(output_file_path, index=False)
+        return initial_dataset
 
 class DatasetPartition:
     """

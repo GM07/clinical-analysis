@@ -5,7 +5,7 @@ import subprocess
 from src.dataset import Dataset, DatasetPartition, DatasetPartitionAnalyzer
 
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.INFO,
     format='%(levelname)s - %(message)s',
     force=True # This ensures we override any existing logger configuration
 )
