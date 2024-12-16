@@ -19,6 +19,7 @@ parser.add_argument('--dataset', type=str, required=True, help='Path to extracti
 parser.add_argument('--out', type=str, required=True, help='Path where the prometheus evaluation dataset will be generated')
 parser.add_argument('--snomed', type=str, help='Path to snomed ontology')
 parser.add_argument('--snomed_cache', type=str, help='Path to snomed cache')
+parser.add_argument('--rubric', type=str, help='Which rubric to evaluate the extractions on (factuality or relevance)')
 
 def main():
 
@@ -33,7 +34,7 @@ def main():
         args.snomed_cache
     )
 
-    evaluator.generate_prompts(extraction_results, rubric='factuality', output_file_path=args.out)
+    evaluator.generate_prompts(extraction_results, rubric=args.rubric, output_file_path=args.out)
     # prompts.to_csv(args.out, index=False)
 
 if __name__ == '__main__':

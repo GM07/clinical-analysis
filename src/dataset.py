@@ -234,16 +234,18 @@ class DatasetPartition:
         return self.data.iloc[self.start + i]
 
     @classmethod
-    def from_save(self, saving_path: str):
+    def from_save(self, path: str, load_original_dataset: bool = True):
         """
         Loads a partition from a file
 
         Args:
-            saving_path: Path where to load the partition from        
+            path: Path where to load the partition from
+            load_original_dataset: Whether to load the original dataset with the partition
         """
-        partition: DatasetPartition = joblib.load(saving_path)
-        partition.saving_path = saving_path
-        partition.load()
+        partition: DatasetPartition = joblib.load(path)
+        partition.saving_path = path
+        if load_original_dataset:
+            partition.load()
         return partition
 
 class DatasetPartitionAnalyzer:
@@ -257,12 +259,15 @@ class DatasetPartitionAnalyzer:
         self.extension = extension
         self.partitions: List[DatasetPartition] = []
         self.partition_file_names: List[str] = []
+        self.partition_error_file_names: List[str] = []
 
+        self.verify_partition_folder_path()
         self.load_partitions()
 
-    def load_partitions(self):
+    def verify_partition_folder_path(self):
         """
-        Loads the partitions that are available in `self.partition_folder_path`
+        Verifies that the attribute `self.partition_folder_path` is correctly pointing
+        to a folder in the file system
         """
         if not os.path.exists(self.partition_folder_path):
             raise FileNotFoundError(f'This is not a valid path : {self.partition_folder_path}')
@@ -273,30 +278,42 @@ class DatasetPartitionAnalyzer:
         if self.partition_folder_path[-1] != '/':
             self.partition_folder_path += '/'
 
-        partition_files = [f for f in os.listdir(self.partition_folder_path) if os.path.isfile(os.path.join(self.partition_folder_path, f))]
+
+    def load_partitions(self):
+        """
+        Loads the partitions that are available in `self.partition_folder_path`. This will assume
+        that all files ending with `self.extension` are `DatasetPartition` objects serialized with
+        joblib
+        """
+        partition_file_names = [f for f in os.listdir(self.partition_folder_path) if os.path.isfile(os.path.join(self.partition_folder_path, f))]
     
-        for partition_file in partition_files:
-            if len(partition_file) < len(self.extension) or partition_file[-len(self.extension):] != self.extension:
+        for partition_file_name in partition_file_names:
+            if len(partition_file_name) < len(self.extension) or partition_file_name[-len(self.extension):] != self.extension:
                 continue
-            logger.info(f'Loading {partition_file}')
+
+            logger.info(f'Loading {partition_file_name}')
             try:
-                partition = DatasetPartition.from_save(os.path.join(self.partition_folder_path, partition_file))
-                self.partitions.append((partition_file, partition))
+                partition = DatasetPartition.from_save(
+                    path=os.path.join(self.partition_folder_path, partition_file_name),
+                    load_original_dataset=False
+                )
+                self.partitions.append((partition_file_name, partition))
             except EOFError:
-                logger.warning(f'Partition could not be loaded {partition_file}')
+                self.partition_error_file_names.append(partition_file_name)
+                logger.warning(f'Partition could not be loaded {partition_file_name}')
 
         self.partitions.sort(key=lambda x: x[1].start)
         self.partition_file_names = list(map(lambda x: x[0], self.partitions))
         self.partitions = list(map(lambda x: x[1], self.partitions))
 
 
-    def get_next_partitions(self, nb_jobs, full_path: bool = True):
-
+    def get_next_partitions(self, max_partitions, full_path: bool = True):
         """
-        Returns at most `nb_jobs` partition file names that are not done being processed
+        Returns at most `max_partitions` partition file names linked to partitions that
+        are not done being processed.
 
         Args:
-            nb_jobs: Number of jobs that need a partition to process
+            max_partitions: Number of jobs that need a partition to process
             full_path: Whether to return the full path of the partitions or just the file name
 
         Returns:
@@ -307,7 +324,7 @@ class DatasetPartitionAnalyzer:
             if not partition.is_completed():
                 results.append(partition_file_name)
 
-            if len(results) >= nb_jobs:
+            if len(results) >= max_partitions:
                 break
 
         if full_path:
@@ -339,6 +356,24 @@ class DatasetPartitionAnalyzer:
             print(f'{partition.start}-{partition.end}: {color}[{processed_bar_string}]{Color.OFF} {percentage_processed:.1f}% ({processed_length} / {partition.nb_elements})')
 
         print('=' * 100)
+
+    def fix_broken_partitions(self):
+        """
+        Fixes all broken partitions that were corrupted by regenerating the partitions that were
+        corrupted and keeping those that were not corrupted (with their results). This only works
+        if at least one partition was loaded correctly. Otherwise, simply regenerate all partititions
+        using a `Dataset` object with the function `.partition()`
+        """
+
+        for partition_file_name in self.partition_error_file_names:
+            logger.info(f'Fixing {partition_file_name}')
+            os.remove(self.partition_folder_path + partition_file_name)
+
+        dataset = Dataset(self.partitions[0].original_dataset_path)
+        dataset.partition(
+            output_folder_path=self.partition_folder_path,
+            size_of_partition=self.partitions[0].nb_elements
+        )
 
 class ExtractionDataset(Dataset):
     """

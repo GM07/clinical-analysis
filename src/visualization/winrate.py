@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 
-def plot_head_to_head(results):
+def plot_winrate(results):
     """
     Plots head to head win rates between methods.
 

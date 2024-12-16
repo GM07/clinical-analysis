@@ -3,6 +3,7 @@ config.ini
 notebooks/
 commands.md
 logs/
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

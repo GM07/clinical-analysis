@@ -48,4 +48,5 @@ class PrometheusEvaluationPipeline:
                 partition.save_results(results)
                 prompts = []
                 ids = []
+        results = [(id_prompt, r) for id_prompt, r in zip(ids, result)]
         partition.save_results(results)
