@@ -1,6 +1,8 @@
 from typing import List
 import torch
 import gc
+from tqdm import tqdm
+import numpy as np
 
 def clear_gpu_cache():
     gc.collect()
@@ -24,3 +26,16 @@ def run_inference(model, tokenizer, batched_input: List, max_new_tokens=128):
     generated_ids = model.generate(model_inputs, max_new_tokens=max_new_tokens)
     decoded = tokenizer.batch_decode(generated_ids)
     return decoded
+
+def batch_elements(items, batch_size=32):
+    """
+    Generate batches of items from a list, with a maximum size per batch.
+    
+    Args:
+        items (list): List of items to batch
+        batch_size (int): Maximum number of items per batch
+        
+    Returns:
+        list: List of batches, where each batch is a list of items
+    """
+    return [items[i:i + batch_size] for i in range(0, len(items), batch_size)]

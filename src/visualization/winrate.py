@@ -5,13 +5,15 @@ import pandas as pd
 import numpy as np
 
 
-def plot_winrate(results):
+def plot_win_rate(results, title: str = 'Head-to-Head Performance (excluding ties)'):
     """
     Plots head to head win rates between methods.
 
     Args:
         results: Dictionary where the keys are the methods and the values are another
         dictionary giving the win rate against each method as well as the number of matchups
+        (output of PrometheusResultParser.calculate_win_rates)
+        title: Title to show on top of graph
         
     """
     # Prepare data with specific ordering and grouping
@@ -53,7 +55,7 @@ def plot_winrate(results):
     # Customize plot
     plt.yticks(y_pos, df['matchup'])
     plt.xlabel('Percentage')
-    plt.title('Head-to-Head Performance (excluding ties)')
+    plt.title(title)
     plt.legend(loc='lower right')
     
     # Add percentage labels

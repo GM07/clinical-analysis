@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 import logging
 
-from src.dataset import Dataset
+from src.data.dataset import Dataset
 
 logging.basicConfig(
     level=logging.INFO,

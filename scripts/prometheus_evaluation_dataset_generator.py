@@ -3,7 +3,7 @@ import logging
 
 import pandas as pd
 
-from src.dataset import ExtractionDataset
+from src.data.dataset import ExtractionDataset
 from src.evaluation.prometheus import PrometheusPromptGenerator
 
 

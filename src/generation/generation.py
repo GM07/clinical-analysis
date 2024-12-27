@@ -679,7 +679,6 @@ class OntologyBasedAnalyzer:
                 result[key] = value
         return result
 
-    
     def get_filtered_attributes(self, attributes: Dict[str, str], filter_attributes: List[str], ancestor_level=2):
         """
         Computes the intersection of two attribute list by taking all attributes from `attributes` 
@@ -717,7 +716,6 @@ class OntologyBasedAnalyzer:
                 new_score = 0.95 * count - 0.05 * nb_ancestors
                 adjusted_frequencies[id] = new_score
         return adjusted_frequencies
-
 
     def counter_list_to_dict(self, tuple_list: List):
         """
@@ -839,7 +837,6 @@ class BHCOntologyBasedVerbalizer:
     ):
         initial = len(self.df)
         for i in tqdm(range(initial, len(structured)), total=len(structured), initial=initial):
-        # for i in range(initial, len(structured)):
             
             current_result = structured.iloc[i]
             analyzer = OntologyBasedAnalyzer(
@@ -854,9 +851,6 @@ class BHCOntologyBasedVerbalizer:
             id = current_result['id']
             summary = current_result[summary_column]
             text = current_result[text_column]
-
-            # Method to adapt the text to the correct length of the summary
-            # suggested_length = max(100, 100 * int(len(nltk.word_tokenize(summary)) / 100))
 
             if not extract:
                 # Normal generation
@@ -987,7 +981,6 @@ class DomainOntologyBasedVerbalizer:
 
                 if domain_filter is not None and domain not in domain_filter:
                     continue
-                print(f'Adapting to {domain} domain')
 
                 if normal:
                     prompt = pre_prompt + text + post_prompt
@@ -1012,5 +1005,4 @@ class DomainOntologyBasedVerbalizer:
                 }
 
                 self.df = pd.concat([self.df, pd.DataFrame([new_row])], ignore_index=True)
-                # self.df_results = pd.DataFrame(predictions, columns=['clinical_notes', 'aces_prediction', 'aces_bhc_prediction', 'normal_prediction', 'target'])
                 self.df.to_csv(self.output_path)

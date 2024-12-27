@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 import logging
 
-from src.dataset import Dataset, DatasetPartition
+from src.data.dataset import Dataset, DatasetPartition
 from src.pipelines.prometheus_pipeline import PrometheusEvaluationPipeline
 
 logging.basicConfig(

@@ -101,6 +101,8 @@ class Snomed:
 
     DEFAULT_CACHE_NAME = 'cache.snomed'
 
+    PRIMARY_CONCEPTS = ['105590001', '123037004', '123038009', '243796009', '254291000', '260787004', '272379006', '308916002', '362981000', '363787002', '370115009', '373873005', '404684003', '410607006', '419891008', '48176007', '71388002', '78621006', '900000000000441003']
+
     def __init__(self, path: str, cache_path = './', rebuild=False, nb_classes: int = 366771):
         
         self.cache_path = cache_path
@@ -254,6 +256,53 @@ class Snomed:
             'restriction_properties_of': json.dumps(self.restriction_properties_of, indent=4, cls=SRestrictionPropertyEncoder)
         }, self.cache_path)
 
+    def get_contextual_description_of_id(self, id: str):
+        """
+        Returns a contextual description of a SNOMED class. This description includes :
+        - The name of the class
+        - A definition (if present)
+        - All possible labels (if present)
+        - Ancestors
+        - Restriction properties (if present)
+        """
+        description = ''
+        sclass = self.get_class_from_id(id)
+
+        # Medical concept
+        description += f'Medical concept: {sclass.label}.\n'
+
+        if len(sclass.definition) > 0:
+            description += 'Definitions: ' + '. '.join(sclass.definition) + '.\n'
+
+        if len(sclass.alt_label) > 1:
+            # First label is always the name
+            labels = sclass.alt_label[1:]
+            if not isinstance(labels, list):
+                labels = [labels]
+
+            description += 'Synonyms: ' + ', '.join(labels) + '.\n'
+
+        ancestors_ids = self.get_ancestors_of_id(id, return_list=True)
+        if len(ancestors_ids) > 1:
+            direct_ancestor = self.get_label_from_id(ancestors_ids[0])
+            description += f'{sclass.label} is a {direct_ancestor}'
+            
+            if len(ancestors_ids) > 2:
+                description += ', which is a type of '
+                description += ', which is a type of '.join(list(map(self.get_label_from_id, ancestors_ids[1:-1])))
+            description += '.\n'
+
+        # ancestors = ', '.join(list(map(self.get_label_from_id, ancestors_ids)))
+
+        properties = self.get_restriction_properties_of_id(id)
+        if len(properties) > 0:
+            description += 'Properties: ' + ', '.join(list(map(lambda x: x.get_value(), properties)))
+
+        return description
+
+    def convert_ids_to_labels(self, ids: List[str], refetch=False):
+        return list(map(lambda x: self.get_label_from_id(x, refetch=refetch), ids))
+
     def convert_ids_to_classes(self, ids: List[str], refetch=False):
         """
         Converts a list of SNOMED ids to SClasses
@@ -302,13 +351,7 @@ class Snomed:
         Returns:
         Label of the concept linked to the id
         """
-        if refetch:
-            return SClass(self.__get_class_from_id(id))
-        else:
-            if id not in self.id_to_classes:
-                return SClass(self.__get_class_from_id(id)).label
-            return self.id_to_classes[id].label
-
+        return self.get_class_from_id(id, refetch=refetch).label
 
     def get_restriction_properties_of_id(self, id: str) -> List[SRestrictionProperty]:
         """

@@ -2,7 +2,7 @@ import logging
 
 import pandas as pd
 
-from src.filter import ClinicalAdmissionFilter
+from src.data.filter import ClinicalAdmissionFilter
 
 logger = logging.getLogger(__name__)
 

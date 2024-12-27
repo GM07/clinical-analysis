@@ -146,3 +146,23 @@ class ModelRegistry:
 
         registry = ModelRegistry(local=local, local_folder_path=local_folder_path)
         return registry.load_checkpoint(checkpoint_id, loading_config=loading_config)
+
+    @staticmethod
+    def load_single_tokenizer(checkpoint: str):
+        """
+        Loads a tokenizer
+        Args:
+            checkpoint: Model checkpoint. If path does not exist locally, the model will be 
+            fetched from HuggingFace
+        """
+        local = os.path.exists(checkpoint)
+        if local:
+            logger.info(f'Loading model locally from {checkpoint}')
+            checkpoint_id = os.path.basename(checkpoint)
+        else:
+            logger.info(f'Fetching model from {checkpoint}')
+
+        local_folder_path = checkpoint.replace(checkpoint_id, '') if local else ''
+
+        registry = ModelRegistry(local=local, local_folder_path=local_folder_path)
+        return registry.load_tokenizer(checkpoint_id)

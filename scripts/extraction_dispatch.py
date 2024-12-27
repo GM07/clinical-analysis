@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 import logging
 import subprocess
 
-from src.dataset import Dataset, DatasetPartition, DatasetPartitionAnalyzer
+from src.data.dataset import Dataset, DatasetPartition, DatasetPartitionAnalyzer
 
 logging.basicConfig(
     level=logging.WARNING,

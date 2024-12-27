@@ -57,6 +57,14 @@ class Annotator(ABC):
         """
         pass
 
+class EmbeddingAnnotator(Annotator):
+    """
+    Annotator of clinical notes based on an embedding vector
+    """
+
+    def __init__(self):
+        super().__init__()
+
 class MedCatAnnotator(Annotator):
     """
     Annotator based on the MedCAT model

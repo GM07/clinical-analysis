@@ -1,7 +1,7 @@
 
 
 from tqdm import tqdm
-from src.dataset import DatasetPartition
+from src.data.dataset import DatasetPartition
 from src.model_registry import LoadingConfig, ModelRegistry
 from src.utils import run_inference
 

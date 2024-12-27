@@ -2,8 +2,8 @@ import logging
 
 from transformers import AutoTokenizer
 
-from src.loader import MimicLoader
-from src.filter import ComposedFilter, NoteCountFilter, TokenLengthFilter
+from src.data.loader import MimicLoader
+from src.data.filter import ComposedFilter, NoteCountFilter, TokenLengthFilter
 from src.pipelines.pipeline import Pipeline
 
 

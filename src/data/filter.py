@@ -4,6 +4,7 @@ from abc import ABC
 from transformers import AutoTokenizer
 
 class ClinicalAdmissionFilter(ABC):
+    # TODO : Change this to Validator
 
     def __call__(self, notes: List[str]) -> bool:
         """

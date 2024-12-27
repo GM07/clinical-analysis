@@ -1,6 +1,7 @@
 import heapq
 import logging
 import os
+import random
 from typing import Any, List, Tuple
 import joblib
 import ast
@@ -374,6 +375,52 @@ class DatasetPartitionAnalyzer:
             output_folder_path=self.partition_folder_path,
             size_of_partition=self.partitions[0].nb_elements
         )
+
+class MimicDataset(Dataset):
+    CLINICAL_NOTE_COLUMN = 'TEXT'
+    DOMAIN_COLUMN = 'CATEGORY'
+    CLINICAL_NOTE_ID_COLUMN = 'ROW_ID'
+
+    def __init__(self, dataset_path: str):
+        super().__init__(dataset_path)
+
+        self.verify()
+
+    def verify(self):
+        """Verifies that the data loaded is conform to the extraction dataset template"""
+        error = f'The dataset is not a valid Mimic dataset, missing the column : '
+        assert self.CLINICAL_NOTE_COLUMN in self.data.columns, error + self.CLINICAL_NOTE_COLUMN
+        assert self.CLINICAL_NOTE_ID_COLUMN in self.data.columns, error + self.CLINICAL_NOTE_ID_COLUMN
+        assert self.DOMAIN_COLUMN in self.data.columns, error + MimicDataset.DOMAIN_COLUMN
+
+    def sample(self, text_only: bool = True, domain: str = None):
+        """
+        Samples a random clinical note in the dataset
+
+        Args:
+            text_only: Whether to return the clinical note only or return the whole row
+            domain: From which domain to sample clinical notes from. If None, the domain is not taken into account in the sampling
+
+        Returns:
+        Tuple containing (index of row in the dataframe, clinical note or row associated to clinical note)
+        """
+        df = self.data
+        
+        if domain is not None:
+            domains = self.data[self.DOMAIN_COLUMN].unique().tolist()
+            assert domain in domains, f'The domain "{domain}" is not a valid domain. Here are the valid domains : {domains}'
+            df = df[df[self.DOMAIN_COLUMN] == domain]
+
+        sample_index = random.randrange(len(df))
+        row = df.iloc[sample_index]
+
+        return (sample_index, row[MimicDataset.CLINICAL_NOTE_COLUMN]) if text_only else (sample_index, row)
+
+    def __getitem__(self, param: Tuple[int, bool]):
+        index, text_only = param
+        assert index < len(self.data)
+        return self.data[self.CLINICAL_NOTE_COLUMN].iloc[index] if text_only else self.data.iloc[index]
+
 
 class ExtractionDataset(Dataset):
     """

@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 import logging
 
-from src.dataset import Dataset
+from src.data.dataset import Dataset
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,7 +22,7 @@ def main():
     print('Called with arguments : ', args)
 
     column_names = list(filter(lambda x: len(x) > 0, map(lambda x: x.strip(), args.results.split(','))))
-    # print(column_names)
+    print(column_names)
     Dataset.partitions_to_file(args.partition_folder, output_file_path=args.out, column_names=column_names)
 
 if __name__ == '__main__':

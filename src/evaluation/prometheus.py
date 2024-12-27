@@ -2,12 +2,12 @@ import ast
 import re
 import itertools
 import matplotlib.pyplot as plt
-from src.dataset import Dataset
+from src.data.dataset import Dataset
 import re
 
 import pandas as pd
 
-from src.dataset import Dataset, ExtractionDataset
+from src.data.dataset import Dataset, ExtractionDataset
 from src.generation.templates import BASE_PROMPT_TEMPLATE
 from src.ontology.snomed import Snomed
 
@@ -167,7 +167,7 @@ class PrometheusResultDataset(Dataset):
 
     def verify(self):
         """Verifies that the data loaded is conform to the extraction dataset template"""
-        error = f'The dataset is not a valid extraction dataset, missing the column : '
+        error = f'The dataset is not a valid Prometheus result dataset, missing the column : '
         for required_column in PrometheusResultDataset.REQUIRED_COLUMNS:
             assert required_column in self.data.columns, error + required_column
 
@@ -176,7 +176,6 @@ class PrometheusResultParser:
     """
     Parses the result of Prometheus and calculates the win rate for each method
     """
-    DECISION_COLUMN = 'decision'
 
     def __init__(self, prom_result_path: str):
         self.prom_result_path = prom_result_path
@@ -185,7 +184,7 @@ class PrometheusResultParser:
 
     def parse(self):
         """
-        Parses the dataset by retrieving the chosen method
+        Parses the dataset by retrieving the chosen method. The decision is set in a new column called `decision`
         """
         decision_pattern = r'(?:\[RESULT\]) (A|B)'
         decision = []
@@ -200,8 +199,29 @@ class PrometheusResultParser:
             else:
                 decision.append(matches[0].lower().strip())
 
-        self.dataset.data[PrometheusResultParser.DECISION_COLUMN] = decision
-            
+        self.dataset.data['decision'] = decision
+
+    def sample_win(self, winner_method: str, loser_method: str):
+        """
+        Returns a random sample where the generation of `winner_method` won versus `loser_method`
+
+        Args:
+            winner_method: Method winning during comparison by Prometheus
+            loser_method: Method losing during comparison by Prometheus
+        """
+        df: pd.DataFrame = self.dataset.data
+        df = df[(df.a == winner_method) & (df.b == loser_method)]
+        df = df[(df['a_result'] != df['b_result'])]
+        df = df[df.decision == 'a']
+
+        df2: pd.DataFrame = self.dataset.data
+        df2 = df2[(df2.b == winner_method) & (df2.a == loser_method)]
+        df2 = df2[(df2['a_result'] != df2['b_result'])]
+        df2 = df2[df2.decision == 'b']
+
+        samples = pd.concat([df, df2], axis=0)
+        return samples.sample()
+
     def calculate_win_rates(self):
         """
         Calculate win rates between specific methods from a dataframe
