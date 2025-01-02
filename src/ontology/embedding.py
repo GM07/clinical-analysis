@@ -15,6 +15,7 @@ import umap.plot as uplot
 from src.ontology.snomed import Snomed
 from src.utils import batch_elements
 from src.ontology.ontology_filter import OntologyFilter, BranchFilter
+from src.model_registry import LoadingConfig, ModelRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ class OntologyEmbeddingBase:
         snomed_cache_path: str, 
         vector_db_out_path: str, 
         batch_size: int,
-        hidden_size: int = 1024
+        hidden_size: int = 1024 
     ):
         if vector_db_out_path[-1] != '/':
             vector_db_out_path += '/'
@@ -148,15 +149,30 @@ class OntologyEmbeddingBase:
             os.remove(index_file)
 
         logger.info('Loading embedding model...')
+
+        loading_config = LoadingConfig()
+        loading_config.device_map = None
+        model, tokenizer = ModelRegistry.load_single_checkpoint(model_path, loading_config=loading_config)
+        model.to('cuda')
+        tokenizer.model_max_length = 512
+        if tokenizer.pad_token is None:
+            tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+            model.resize_token_embeddings(len(tokenizer))
+
+        tokenizer_kwargs = {
+            'padding': True,
+            'truncation': True,
+            'max_length': 512,
+            'return_tensors': 'pt'
+        }
+
         extractor = pipeline(
             "feature-extraction",
-            model=model_path,
+            model=model,
+            tokenizer=tokenizer,
             device='cuda',
-            padding=True,
-            truncation=True,
-            max_length=512,
-            return_tensors='pt',
-            local_files_only=True
+            local_files_only=True,
+            **tokenizer_kwargs
         )
 
         logger.info('Generating description of ontological concepts...')
@@ -181,7 +197,6 @@ class OntologyEmbeddingBase:
         current_index = 0
         for ids, texts in tqdm(zip(batched_ids, batched_texts), total=len(batched_ids)):
             outputs = extractor(texts, batch_size=batch_size)
-            
             # Convert outputs to numpy array
             batch_vectors = np.vstack([output[0, 0] for output in outputs])
             batch_vectors = batch_vectors.astype(np.float32)
