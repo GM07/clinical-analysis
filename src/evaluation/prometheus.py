@@ -1,11 +1,17 @@
 import ast
 import re
 import itertools
+from typing import List
 import matplotlib.pyplot as plt
 from src.data.dataset import Dataset
 import re
 
+import plotly.graph_objects as go
+import plotly.express as px
+
+from nltk.translate import bleu_score
 import pandas as pd
+from tqdm import tqdm
 
 from src.data.dataset import Dataset, ExtractionDataset
 from src.generation.templates import BASE_PROMPT_TEMPLATE
@@ -180,20 +186,67 @@ class PrometheusResultParser:
     def __init__(self, prom_result_path: str):
         self.prom_result_path = prom_result_path
         self.dataset = PrometheusResultDataset(self.prom_result_path)
+        self.decision_pattern = r'(?:\[RESULT\]) (A|B)'
         self.parse()
+
+    def analyze_generations(self, data: pd.DataFrame = None):
+        """
+        Will analyze the generations of Prometheus giving more statistics about the wins and the losses
+        """
+
+        if data is None:
+            data = self.dataset.data
+
+        identical_generations = 0 # When the generate is identical in both methods
+        no_concepts = 0 # No concepts were detected
+        not_enough_tokens = 0
+        correct_generations = 0 # Don't know why, should be 0
+
+        for a_result, b_result, values in tqdm(zip(data['a_result'], data['b_result'], data['result']), total=len(data)):
+            a_result = str(a_result)
+            b_result = str(b_result)
+            if bleu_score.sentence_bleu(a_result.lower().strip(), b_result.lower().strip()) >= 0.9:
+            # if a_result.strip().lower() == b_result.strip().lower():
+                identical_generations += 1
+                continue
+
+            if not isinstance(values, str):
+                no_concepts += 1
+                continue
+
+            matches = re.findall(self.decision_pattern, values)
+            if len(matches) == 0:
+                not_enough_tokens += 1
+            else:
+                correct_generations += 1
+
+        return {
+            'identical_generations': identical_generations / len(data),
+            'no_concepts_found': no_concepts / len(data),
+            'not_enough_tokens': not_enough_tokens / len(data),
+            'correct_generations': correct_generations / len(data),
+        }
+    def analyze_ties(self):
+        """
+        Analyzes the generations in the case of ties        
+        """
+        
+        df: pd.DataFrame = self.dataset.data
+        ties = df[df['decision'] == 'tie']
+        return self.analyze_generations(data=ties)
+
 
     def parse(self):
         """
         Parses the dataset by retrieving the chosen method. The decision is set in a new column called `decision`
         """
-        decision_pattern = r'(?:\[RESULT\]) (A|B)'
         decision = []
         for values in self.dataset.data['result']:
             if not isinstance(values, str):
                 decision.append('tie')
                 continue
 
-            matches = re.findall(decision_pattern, values)
+            matches = re.findall(self.decision_pattern, values)
             if len(matches) == 0:
                 decision.append('tie')
             else:
@@ -222,9 +275,12 @@ class PrometheusResultParser:
         samples = pd.concat([df, df2], axis=0)
         return samples.sample()
 
-    def calculate_win_rates(self):
+    def calculate_win_rates(self, include_ties: bool = True):
         """
         Calculate win rates between specific methods from a dataframe
+
+        Args:
+            include_ties: Whether to include the ties when calculating the win rate
         """
         # Get unique methods
         methods = set(self.dataset.data['a'].unique()) | set(self.dataset.data['b'].unique())
@@ -237,7 +293,7 @@ class PrometheusResultParser:
                     continue
                     
                 # Get matches between these two methods
-                matches = self.dataset.data[
+                matches = self.dataset.data.loc[
                     ((self.dataset.data['a'] == method1) & (self.dataset.data['b'] == method2)) |
                     ((self.dataset.data['a'] == method2) & (self.dataset.data['b'] == method1))
                 ]
@@ -247,7 +303,7 @@ class PrometheusResultParser:
                     continue
                     
                 # Count wins for method1
-                wins = len(matches[
+                wins = len(matches.loc[
                     ((self.dataset.data['a'] == method1) & (self.dataset.data['decision'] == 'a')) |
                     ((self.dataset.data['b'] == method1) & (self.dataset.data['decision'] == 'b'))
                 ])
@@ -255,8 +311,10 @@ class PrometheusResultParser:
                 # Count ties
                 ties = len(matches[matches['decision'] == 'tie'])
                 
-                # Calculate win rate : a tie is considered as half a win for each method
-                win_rate = (wins) / (total_matches - ties) * 100
+                if include_ties:
+                    win_rate = 100 * wins / total_matches
+                else:
+                    win_rate = (wins) / (total_matches - ties) * 100
                 
                 results[method1][method2] = {
                     'win_rate': round(win_rate, 2),
@@ -331,3 +389,63 @@ class PrometheusResultParser:
         plt.grid(axis='x', alpha=0.3)
         plt.tight_layout()
         return plt
+
+    # def plot_absolute_wins(self, include_ties)
+
+    def heatmap_view(self, include_ties: bool = True, method_names: List[str] = None, title: str = 'Algorithm Win Rates Heatmap'):
+        """
+        Create a heatmap visualization of win rates between algorithms.
+        
+        Args:
+            data (dict): Nested dictionary containing win rates between algorithms
+            include_ties: Whether to include the ties when calculating the win rates
+            title: title of the figure
+        """
+        data = self.calculate_win_rates(include_ties=include_ties)
+
+        assert len(method_names) == len(list(data.keys())), 'The names of the methods must be of equal length to the number of methods'
+
+        algorithms = list(data.keys())
+        matrix = []
+        info_matrix = []
+        
+        for algo1 in algorithms:
+            info_row = []
+            row = []
+            for algo2 in algorithms:
+                if algo1 == algo2:
+                    info_row.append((0, 0, 0))
+                    row.append(0)
+                else:
+                    total_matches = data[algo1][algo2]['total_matches'] if include_ties else data[algo1][algo2]['total_matches'] - data[algo1][algo2]['ties']
+                    info_row.append((data[algo1][algo2]['win_rate'], data[algo1][algo2]['wins'], total_matches))
+                    row.append(data[algo1][algo2]['win_rate'])
+            info_matrix.append(info_row)
+            matrix.append(row)
+        
+        # Create heatmap
+        fig = go.Figure(data=go.Heatmap(
+            z=matrix,
+            x=method_names if method_names else algorithms,
+            y=method_names if method_names else algorithms,
+            text=[[f'{info_val[0]:.1f}% \n ({info_val[1]} / {info_val[2]})' if info_val[0] != 0 else '-' for val, info_val in zip(row, info_row)] for row, info_row in zip(matrix, info_matrix)],
+            texttemplate='%{text}',
+            textfont={"size": 10},
+            zmax=100,
+            zmin=0,
+            # colorscale='Reds',
+            colorscale='YlGn', #[(0.0, 'white'), (0.01, 'rgb(201, 109, 109)'), (1.0, 'rgb(115, 201, 109)')],
+            hoverongaps=False,
+            hovertemplate='%{y} vs %{x}<br>Win Rate: %{z:.1f}%<extra></extra>'
+        ))
+        
+        # Update layout
+        fig.update_layout(
+            title=title,
+            xaxis_title='Opponent',
+            yaxis_title='Algorithm',
+            width=700,
+            height=600
+        )
+        
+        return fig

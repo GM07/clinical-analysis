@@ -77,6 +77,8 @@ class OntologyConstrainedModel:
         if self.apply_chat_template and self.tokenizer.chat_template is not None:
             prompts = self.chat_template.batched_single_user_entry(prompts)
         
+        logger.debug(prompts)
+
         model_input = self.tokenizer(
             prompts, 
             padding=True, 
@@ -123,10 +125,9 @@ class OntologyConstrainedModel:
         if len(generation_input.prompts[0]) == 0:
             logger.warning(f'The prompts sent to the model are empty')
         
-        logger.debug(generation_input.prompts)
-        
         model_input = self.prepare_model_inputs(generation_input.prompts).to(self.get_device())
         self.model.eval()
+
         with torch.no_grad():
             generated = self.model.generate(
                 **model_input, 
@@ -189,6 +190,7 @@ class OntologyConstrainedModel:
                 'do_sample': False,
                 'diversity_penalty': generation_config.diversity_penalty,
                 'num_return_sequences': 1,
+                'use_cache': False, # TODO : Change when transformers bug is fixed
                 'max_length': max_length,
                 'eos_token_id': self.tokenizer.eos_token_id,
                 'bos_token_id': self.tokenizer.bos_token_id,
@@ -217,7 +219,8 @@ class OntologyConstrainedModel:
                 ]),
                 pad_token_id=self.tokenizer.pad_token_id,
                 generation_config=hf_gen_config,
-                synced_gpus=False
+                synced_gpus=False,
+                use_cache=False
             )
             final_answers = self.get_final_generation(prompts_tokenized['input_ids'], generations)
 
@@ -258,12 +261,14 @@ class OntologyBasedPrompter:
         annotator: Annotator, 
         template: OntologyPromptTemplate = OntologyPromptTemplate()
     ):
-        
         """
+        Initializes an OntologyBasedPrompter object that handles the extraction of medical concepts from text.
+
         Args:
-            constrained_model: reference to an aces model used to question the model
-            snomed: reference to the snomed ontology 
-            annotator: reference to the UMLSAnnotator.
+            constrained_model: An OntologyConstrainedModel instance used to generate responses
+            snomed: A Snomed ontology instance providing access to medical concepts and relationships
+            annotator: An Annotator instance for identifying medical concepts in text
+            template: An OntologyPromptTemplate instance defining the prompt format (default: OntologyPromptTemplate())
         """
         
         self.constrained_model = constrained_model

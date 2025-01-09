@@ -74,12 +74,13 @@ class Annotator(ABC):
         ents = []
         for result in results:
             if render_labels:
-                label = 'N/A'
-                if snomed.is_id_valid(result.snomed_id):
-                    label = snomed.get_label_from_id(result.snomed_id)
-                ent = doc.char_span(int(result.start), int(result.end), label=f'{label} ({result.similarity:.2f})')
+                label = snomed.get_label_from_id(result.snomed_id) if snomed.is_id_valid(result.snomed_id) else 'N/A'
+                final_label = f'{label} ({result.similarity:.2f})'
             else:
-                ent = doc.char_span(int(result.start), int(result.end), label=f'{result.snomed_id} ({result.similarity:.2f})')
+                final_label = f'{result.snomed_id} ({result.similarity:.2f})'
+            
+            ent = doc.char_span(int(result.start), int(result.end), label=final_label)
+
             if ent is not None:
                 ents.append(ent)
         doc.ents = ents
@@ -146,42 +147,32 @@ class OntologyEmbeddingAnnotator(Annotator):
                     start_ends.append((start, start + len(sentence)))
 
         return final_sentences, start_ends
-
+    
     def get_word_sequences_with_spans(self, text, sequence_length=5, overlap_window=0):
-        # Split the text into words and keep track of their spans
-        words = text.split()
-        if len(words) < sequence_length:
-            return []
-            
-        # Calculate step size based on overlap
-        step_size = sequence_length - overlap_window
+        # Use spaCy's tokenization instead of split()
+        nlp = spacy.blank('en')
+        doc = nlp.make_doc(text)
         
+        if len(doc) < sequence_length:
+            return [], []
+        
+        step_size = sequence_length - overlap_window
         sequences = []
         spans = []
-        pos = 0
-        for i in range(0, len(words) - sequence_length + 1, step_size):
-            # Find start of current sequence
-            while pos < len(text) and text[pos].isspace():
-                pos += 1
-            start_pos = pos
+        
+        for i in range(0, len(doc) - sequence_length + 1, step_size):
+            # Get the tokens for this sequence
+            sequence_tokens = doc[i:i + sequence_length]
             
-            # Get the sequence
-            sequence_words = words[i:i + sequence_length]
-            sequence = ' '.join(sequence_words)
+            # Get start position of first token and end position of last token
+            start_pos = sequence_tokens[0].idx
+            end_pos = sequence_tokens[-1].idx + len(sequence_tokens[-1].text)
             
-            # Find end position (move pos to end of last word)
-            for word in sequence_words[:-1]:
-                pos += len(word)
-                while pos < len(text) and text[pos].isspace():
-                    pos += 1
-            pos += len(sequence_words[-1])
+            # Join the tokens with space to create sequence
+            sequence = ' '.join(token.text for token in sequence_tokens)
             
             sequences.append(sequence)
-            spans.append((start_pos, pos))
-            # sequences_with_spans.append({
-                # 'sequence': sequence,
-                # 'span': span
-            # })
+            spans.append((start_pos, end_pos))
         
         return sequences, spans
 
@@ -211,9 +202,8 @@ class OntologyEmbeddingAnnotator(Annotator):
 
         # Initialize DBSCAN clusterer
         clusterer = DBSCAN(
-            eps=0.2,
+            eps=0.3,
             min_samples=1,
-            # metric='precomputed'
             metric='cosine'
         )
         
@@ -234,11 +224,14 @@ class OntologyEmbeddingAnnotator(Annotator):
         return np.array(centroids)
 
     def annotate(self, text: str, return_ids_only=False) -> List:
-        sentences, start_ends = self.get_word_sequences_with_spans(text, sequence_length=5, overlap_window=2)
+        sentences, start_ends = self.get_word_sequences_with_spans(text, sequence_length=10, overlap_window=0)
 
         embeddings = self.generate_embeddings(sentences)
-        embeddings = self.cluster_embeddings(embeddings)
         faiss.normalize_L2(embeddings)
+        print('before : ', len(embeddings))
+        # embeddings = self.cluster_embeddings(embeddings)
+        print('after : ', len(embeddings))
+
 
         results = []
         for embedding, sentence, start_end in zip(embeddings, sentences, start_ends):

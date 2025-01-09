@@ -1,6 +1,8 @@
 from typing import List
 
 
+DEFAULT_SYSTEM_ENTRY = "You are an expert and experienced from the healthcare and biomedical domain with extensive medical knowledge and practical experience who's willing to help answer the user's query with explanation. In your explanation, leverage your deep medical expertise such as relevant anatomical structures, physiological processes, diagnostic criteria, treatment guidelines, or other pertinent medical concepts. Use precise medical terminology while still aiming to make the explanation clear and accessible to a general audience."
+
 class ChatTemplate:
     """
     Applies a chat template on a set of entries
@@ -40,11 +42,14 @@ class ChatTemplate:
         self.messages.append({'role': role, 'content': entry})
         return self.apply(self.messages, add_generation_prompt=add_generation_prompt)
     
-    def single_user_entry(self, entry: str):
+    def single_user_entry(self, entry: str, system_entry: str = DEFAULT_SYSTEM_ENTRY):
         """
         Returns a chat conversation with a single user entry and the generation prompt added
         """
-        return self.apply([{'role': 'user', 'content': entry}])
+        return self.apply([
+            {"role": "system", "content": system_entry},
+            {'role': 'user', 'content': entry}
+        ])
     
     def batched_single_user_entry(self, entries: List[str]):
         """
