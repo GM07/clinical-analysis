@@ -1,11 +1,16 @@
-
-
 from typing import List
 from tqdm import tqdm
+from vllm import LLM, SamplingParams
+import torch
+import os
+
 from src.data.dataset import DatasetPartition
 from src.model_registry import LoadingConfig, ModelRegistry
 from src.utils import run_inference
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 class PrometheusEvaluationPipeline:
     """
@@ -27,7 +32,7 @@ class PrometheusEvaluationPipeline:
         
         self.model, self.tokenizer = ModelRegistry.load_single_checkpoint(self.checkpoint_path, loading_config=self.loading_config)
 
-    def run_inference(self, prompts: List[str], max_new_tokens: int = 256):
+    def run_inference(self, prompts: List[str], max_new_tokens: int = 512):
         """
         Runs inference on the prompts. 
 
@@ -37,7 +42,7 @@ class PrometheusEvaluationPipeline:
         """
         return run_inference(self.model, self.tokenizer, prompts, max_new_tokens=max_new_tokens)
 
-    def __call__(self, partition: DatasetPartition, batch_size: int = 4):
+    def __call__(self, partition: DatasetPartition, batch_size: int = 24):
         """
         Executes the pipeline on the dataset
 
@@ -67,6 +72,7 @@ class FastPrometheusEvaluationPipeline(PrometheusEvaluationPipeline):
     """
     Faster version of the PrometheusEvaluationPipeline that uses vllm for inference
     """
+    
     def __init__(self, checkpoint_path: str, loading_config: LoadingConfig = LoadingConfig()):
         """
         Args:
@@ -76,15 +82,29 @@ class FastPrometheusEvaluationPipeline(PrometheusEvaluationPipeline):
         self.checkpoint_path = checkpoint_path
         self.loading_config = loading_config
         
-        # Don't call parent load() since we'll use vllm
         self.load()
 
     def load(self):
         """Loads the model using vllm"""
-        from vllm import LLM
-        self.model = LLM(model=self.checkpoint_path, tensor_parallel_size=self.loading_config.tensor_parallel_size)
+        
+        gpu_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
 
-    def run_inference(self, prompts: List[str], max_new_tokens: int = 256):
+        logger.info(f"Using {gpu_count} GPUs")
+
+        # Set multiprocessing method for vLLM workers
+        os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
+
+        # TODO : Use flash attn
+        self.model = LLM(
+            model=self.checkpoint_path,
+            dtype='float16',
+            tensor_parallel_size=gpu_count,
+            # pipeline_parallel_size=1,
+            # use_flash_attn=True,
+            # use_safetensors=True,
+        )
+
+    def run_inference(self, prompts: List[str], max_new_tokens: int = 512):
         """
         Runs inference on the prompts using vllm
 
@@ -92,5 +112,6 @@ class FastPrometheusEvaluationPipeline(PrometheusEvaluationPipeline):
             prompts: List of prompts to run inference on
             max_new_tokens: Maximum number of new tokens to generate
         """
-        outputs = self.model.generate(prompts, max_tokens=max_new_tokens)
+        params = SamplingParams(max_tokens=max_new_tokens)
+        outputs = self.model.generate(prompts, sampling_params=params)
         return [output.outputs[0].text for output in outputs]

@@ -127,6 +127,7 @@ class PrometheusPromptGenerator:
         combinations = list(itertools.permutations(result_columns, r=2))
         results = extraction_dataset.data
 
+
         prompts = []
         for combination in combinations:
             for i, row in results.iterrows():
@@ -145,6 +146,7 @@ class PrometheusPromptGenerator:
                     concept_label = self.snomed.get_label_from_id(a_concept)
                     prompt = self.get_prometheus_prompt(clinical_note, concept_label, a_result, b_result, rubric)
                     prompts.append((clinical_note_id, combination[0], combination[1], clinical_note, concept_label, a_result, b_result, prompt))
+                    
         prompts = pd.DataFrame(prompts, columns=[
             clinical_note_id_column,
             'a',
@@ -186,7 +188,8 @@ class PrometheusResultParser:
     def __init__(self, prom_result_path: str):
         self.prom_result_path = prom_result_path
         self.dataset = PrometheusResultDataset(self.prom_result_path)
-        self.decision_pattern = r'(?:\[RESULT\]) (A|B)'
+        self.decision_pattern = r'(?:\[?Result\]?:?)\s*(N\/A|A|B)\s*(or|and)?\s*(A|B)?' #r'(?:\[RESULT\]) (A|B)'
+        self.tie_pattern = r'(?:\[RESULT\]) (A|B) or (A|B)' # TODO Ties
         self.parse()
 
     def analyze_generations(self, data: pd.DataFrame = None):
@@ -226,6 +229,7 @@ class PrometheusResultParser:
             'not_enough_tokens': not_enough_tokens / len(data),
             'correct_generations': correct_generations / len(data),
         }
+    
     def analyze_ties(self):
         """
         Analyzes the generations in the case of ties        
@@ -235,19 +239,29 @@ class PrometheusResultParser:
         ties = df[df['decision'] == 'tie']
         return self.analyze_generations(data=ties)
 
-
     def parse(self):
         """
         Parses the dataset by retrieving the chosen method. The decision is set in a new column called `decision`
         """
         decision = []
         for values in self.dataset.data['result']:
+
             if not isinstance(values, str):
-                decision.append('tie')
+                decision.append('parsing_error')
                 continue
 
-            matches = re.findall(self.decision_pattern, values)
-            if len(matches) == 0:
+            matches = re.findall(self.decision_pattern, values, re.IGNORECASE)
+            no_matches = len(matches) == 0
+            if no_matches:
+                decision.append('parsing_error')
+                continue
+
+            matches = matches[0]
+            both_answers = len(matches) == 2 and matches[0] == 'A' and matches[1] == 'B'
+            n_a = matches[0] == 'N/A'
+
+            if both_answers or n_a:
+                # Both methods were chosen
                 decision.append('tie')
             else:
                 decision.append(matches[0].lower().strip())
@@ -275,13 +289,11 @@ class PrometheusResultParser:
         samples = pd.concat([df, df2], axis=0)
         return samples.sample()
 
-    def calculate_win_rates(self, include_ties: bool = True):
+    def calculate_win_rates(self):
         """
         Calculate win rates between specific methods from a dataframe
-
-        Args:
-            include_ties: Whether to include the ties when calculating the win rate
         """
+
         # Get unique methods
         methods = set(self.dataset.data['a'].unique()) | set(self.dataset.data['b'].unique())
         
@@ -308,19 +320,22 @@ class PrometheusResultParser:
                     ((self.dataset.data['b'] == method1) & (self.dataset.data['decision'] == 'b'))
                 ])
                 
-                # Count ties
+                # Count parsing errors and ties
                 ties = len(matches[matches['decision'] == 'tie'])
-                
-                if include_ties:
-                    win_rate = 100 * wins / total_matches
-                else:
-                    win_rate = (wins) / (total_matches - ties) * 100
+                parsing_errors = len(matches[matches['decision'] == 'parsing_error'])
+
+                effective_matches = (total_matches - ties - parsing_errors)
+                win_rate = (wins / total_matches) * 100
+                effective_win_rate = (wins / effective_matches) * 100
                 
                 results[method1][method2] = {
                     'win_rate': round(win_rate, 2),
+                    'effective_win_rate': round(effective_win_rate, 2),
                     'wins': wins,
                     'ties': ties,
-                    'total_matches': total_matches
+                    'total_matches': total_matches,
+                    'effective_matches': effective_matches,
+                    'parsing_errors': parsing_errors
                 }
                 
         return results
@@ -390,18 +405,17 @@ class PrometheusResultParser:
         plt.tight_layout()
         return plt
 
-    # def plot_absolute_wins(self, include_ties)
 
-    def heatmap_view(self, include_ties: bool = True, method_names: List[str] = None, title: str = 'Algorithm Win Rates Heatmap'):
+    def heatmap_view(self, effective_matches: bool = True, method_names: List[str] = None, title: str = 'Algorithm Win Rates Heatmap'):
         """
         Create a heatmap visualization of win rates between algorithms.
         
         Args:
             data (dict): Nested dictionary containing win rates between algorithms
-            include_ties: Whether to include the ties when calculating the win rates
+            effective_matches: Whether to include the parsing errors and ties when calculating the win rates
             title: title of the figure
         """
-        data = self.calculate_win_rates(include_ties=include_ties)
+        data = self.calculate_win_rates()
 
         assert len(method_names) == len(list(data.keys())), 'The names of the methods must be of equal length to the number of methods'
 
@@ -417,9 +431,11 @@ class PrometheusResultParser:
                     info_row.append((0, 0, 0))
                     row.append(0)
                 else:
-                    total_matches = data[algo1][algo2]['total_matches'] if include_ties else data[algo1][algo2]['total_matches'] - data[algo1][algo2]['ties']
-                    info_row.append((data[algo1][algo2]['win_rate'], data[algo1][algo2]['wins'], total_matches))
-                    row.append(data[algo1][algo2]['win_rate'])
+                    total_matches = data[algo1][algo2]['effective_matches'] if effective_matches else data[algo1][algo2]['total_matches']
+                    win_rate = data[algo1][algo2]['effective_win_rate'] if effective_matches else data[algo1][algo2]['win_rate']
+                    info_row.append((win_rate, win_rate, total_matches))
+                    row.append(win_rate)
+
             info_matrix.append(info_row)
             matrix.append(row)
         

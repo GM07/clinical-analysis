@@ -1,8 +1,7 @@
 from typing import List
 import torch
 import gc
-from tqdm import tqdm
-import numpy as np
+import json
 
 def clear_gpu_cache():
     gc.collect()
@@ -39,3 +38,12 @@ def batch_elements(items, batch_size=32):
         list: List of batches, where each batch is a list of items
     """
     return [items[i:i + batch_size] for i in range(0, len(items), batch_size)]
+
+def valid_json(json_string):
+    if json_string is None:
+        return False
+    try:
+        json.loads(json_string)
+        return True
+    except:
+        return False

@@ -1,9 +1,14 @@
 from dataclasses import dataclass
 import os
 import logging
+from typing import List
 
+from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 import torch
+from vllm import LLM, SamplingParams
+
+from src.utils import run_inference, batch_elements
 
 logger = logging.getLogger(__name__)
 
@@ -166,3 +171,67 @@ class ModelRegistry:
 
         registry = ModelRegistry(local=local, local_folder_path=local_folder_path)
         return registry.load_tokenizer(checkpoint_id)
+
+
+class Model:
+    """
+    Helper class to load HuggingFace models and perform inference using transformers
+    """
+    def __init__(self, model_name: str):
+        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    def generate(self, prompts: List[str], batch_size: int = 1):
+        """
+        Runs inference of a model on a set of inputs
+
+        Args:
+            prompts: Inputs to run inference on
+            batch_size: Number of inputs to run inference on at once
+        """
+
+        batched_prompts = batch_elements(prompts, batch_size)
+        results = []
+        for batch in tqdm(batched_prompts, desc='Running inference', total=len(batched_prompts)):
+            run_inference(
+                model=self.model,
+                tokenizer=self.tokenizer,
+                batched_input=batch,
+                max_new_tokens=128
+            )
+            results.extend(results)
+
+        return results
+
+
+class FastModel:
+    """
+    Helper class to load HuggingFace models using vllm
+    """
+    def __init__(self, model_name: str):
+        self.llm = LLM(model=model_name)
+
+    def generate(self, prompts: str, batch_size: int = 1):
+        """
+        Runs inference of a model on a set of inputs
+
+        Args:
+            prompts: Inputs to run inference on
+            batch_size: Number of inputs to run inference on at once
+        """
+
+        batched_prompts = batch_elements(prompts, batch_size)
+
+        sampling_params = SamplingParams(
+            temperature=0.0,
+            top_p=1.0,
+            top_k=1,
+            max_tokens=128,
+            seed=42,
+        )
+
+        results = []
+        for batch in tqdm(batched_prompts, desc='Running inference', total=len(batched_prompts)):   
+            results.extend(self.llm.generate(batch, params=sampling_params))
+
+        return results

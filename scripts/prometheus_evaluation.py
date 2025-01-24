@@ -1,8 +1,8 @@
 from argparse import ArgumentParser
 import logging
 
-from src.data.dataset import Dataset, DatasetPartition
-from src.pipelines.prometheus_pipeline import PrometheusEvaluationPipeline
+from src.data.dataset import DatasetPartition
+from src.pipelines.prometheus_pipeline import FastPrometheusEvaluationPipeline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,10 +21,9 @@ def main():
 
     print('Called with arguments : ', args)
 
-    pipeline = PrometheusEvaluationPipeline(
+    pipeline = FastPrometheusEvaluationPipeline(
         checkpoint_path=args.checkpoint,
     )
-    pipeline.load()
 
     partition = DatasetPartition.from_save(args.partition)
 
