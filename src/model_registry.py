@@ -211,7 +211,7 @@ class FastModel:
     def __init__(self, model_name: str):
         self.llm = LLM(model=model_name)
 
-    def generate(self, prompts: str, batch_size: int = 1):
+    def generate(self, prompts: List[str], batch_size: int = 1, sampling_params: SamplingParams = None):
         """
         Runs inference of a model on a set of inputs
 
@@ -222,13 +222,14 @@ class FastModel:
 
         batched_prompts = batch_elements(prompts, batch_size)
 
-        sampling_params = SamplingParams(
-            temperature=0.0,
-            top_p=1.0,
-            top_k=1,
-            max_tokens=128,
-            seed=42,
-        )
+        if sampling_params:
+            sampling_params = SamplingParams(
+                temperature=0.0,
+                top_p=1.0,
+                top_k=1,
+                max_tokens=128,
+                seed=42,
+            )
 
         results = []
         for batch in tqdm(batched_prompts, desc='Running inference', total=len(batched_prompts)):   

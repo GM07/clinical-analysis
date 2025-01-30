@@ -56,7 +56,7 @@ class BranchFilter(OntologyFilter):
 
 class BranchesFilter(OntologyFilter):
     """
-    Filter that will remove all descendants of a base class (thus pruning a whole branch of the ontology)
+    Filter that will remove all descendants of multiple base classes (thus pruning branches of the ontology)
     """
 
     def __init__(self, snomed: Snomed, base_concept_ids: List[str]):

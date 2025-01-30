@@ -1,4 +1,5 @@
 import logging
+from typing import List
 
 import pandas as pd
 
@@ -83,3 +84,24 @@ class MimicLoader:
 
     def filter(self, filter: ClinicalAdmissionFilter) -> pd.DataFrame:
         return self.formatted_data.groupby('HADM_ID').filter(lambda x: filter(x['TEXT'].tolist()))
+
+
+    def get_excluded_notes(self, excluded_note_ids: List[int]) -> List[str]:
+        """
+        Returns the notes that are not in the excluded_hadm_ids list
+
+        Args:
+            excluded_hadm_ids: List of admission ids to exclude
+        """
+        return self.data[~self.data['ROW_ID'].isin(excluded_note_ids)]
+
+    @staticmethod
+    def get_note_ids_from_path(path: str) -> List[int]:
+        """
+        Returns the note ids present in the processed file
+
+        Args:
+            path: Path to the processed file
+        """
+        processed_data = pd.read_csv(path)
+        return processed_data['ROW_ID'].tolist()

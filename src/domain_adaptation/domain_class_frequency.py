@@ -1,130 +1,118 @@
 from collections import Counter, defaultdict
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from tqdm import tqdm
 import joblib
 
+from src.ontology.ontology_filter import BranchesFilter
 from src.ontology.snomed import Snomed
-from src.ontology.annotator import AnnotationMatch
+from src.ontology.annotator import AnnotationMatch, Annotator
 
 MAX_ANCESTORS = 2
 
 class DomainClassFrequency:
+    """
+    Class containing the class frequencies for a domain
+    """
 
-    def __init__(self, frequencies: Dict[str, float], domain: str, average: Dict[str, float] = None) -> None:
+    EXCLUDE_IDS = ['362981000', '444677008', '419891008', '276339004', '106237007', '900000000000441003']
+
+    def __init__(self, domain: str, frequencies: Dict[str, float]) -> None:
         self.domain = domain
-        self.frequencies = DomainClassFrequency.center_frequency_dict(frequencies, average)
+        self.frequencies = frequencies
+        self.counter = Counter(frequencies)
 
-    @staticmethod
-    def center_frequency_dict(frequency: Dict[str, int], average: Dict[str, float] = None):
+    def get_concepts(self, top_n: int = None):
         """
-        Takes a dictionary where the keys are a string and the values are the occurrence
-        of that string (in a text for example) and normalizes the occurrence using the
-        total occurrences while substracting the average value
+        Retrieves the concepts in the domain. If top_n is provided, only the top_n concepts are retrieved
 
         Args:
-            frequency: Dictionary containing for each concept, the frequency of that concept
-            average: Dictionary containing the average frequency of each concepts in the domain
+            top_n: The number of concepts to retrieve
         """
-        frequencies = {}
+        return self.format_concept_list(self.counter.most_common(top_n))
 
-        total = 0
-        for key, count in frequency.items():
+    def format_concept_list(self, concepts: List[Tuple[str, float]]):
+        """
+        """
+        concept_ids = []
+        frequencies = []
+        for concept in concepts:
+            concept_ids.append(concept[0])
+            frequencies.append(concept[1])
 
-            normalized_count = count
-            if average is not None:
-                if key in average:
-                    normalized_count = max(0, normalized_count - average[key])
-            total += normalized_count
-            frequencies[key] = normalized_count
+        return concept_ids, frequencies
 
-        for key, value in frequencies.items():
-            frequencies[key] = value / total
+    @staticmethod
+    def get_frequencies_of_domain(domain: str, domain_texts: List[str], snomed: Snomed, annotator: Annotator) -> Dict[str, float]:
+        """
+        Retrieves the frequencies of each concept in the domain
 
-        return frequencies
+        Args:
+            domain: The domain to analyze
+            domain_texts: The texts to analyze
+            snomed: The SNOMED ontology
+            annotator: The annotator to use
+        """
+        batches = annotator.batch_annotate(domain_texts, return_ids_only=True)
+        concepts = []
+        for batch in batches:
+            concepts.extend(DomainClassFrequency._get_all_ancestors(batch, snomed))
 
-    def get_most_common(self, top_n: int = 30, exclude_set: int = set(), snomed: Snomed = None):
+        filter = BranchesFilter(snomed, DomainClassFrequency.EXCLUDE_IDS)
+        concepts = filter(concepts)
 
-        if len(exclude_set) == 0:
-            return Counter(self.frequencies).most_common(top_n)
+        concepts = DomainClassFrequency._get_adjusted_frequencies(Counter(concepts), snomed)
+        return DomainClassFrequency(domain, concepts)
 
-        assert snomed is not None, "If the exclude set is given, the snomed argument must be provided"
+    @staticmethod
+    def _get_adjusted_frequencies(frequencies: Dict[str, float], snomed: Snomed):
+        """
+        Adjusts frequencies to favor more general concepts first (generic term will probably
+        have less ancestors). Modifies the score according to the following formula :
+        new_score = 0.75 * old_score - nb_ancestors * 0.25
+        """
+        adjusted_frequencies = dict()
+        for elem in frequencies.items():
+            id, frequency = elem
 
-        filtered_frequencies = {}
-        for id, freq in self.frequencies.items():
-            ancestors = snomed.get_ancestors_of_id(id, return_set=True)
-            if len(ancestors) == 0:
-                continue
-            
-            ancestors.remove(snomed.base_class.id)
-            ancestors.add(id)
-            if len(ancestors.intersection(exclude_set)) == 0 and id != snomed.base_class.id:
-                filtered_frequencies[id] = freq
+            # We want to favor more general concepts first 
+            # A generic term will probably have less ancestors
+            ancestors = snomed.get_ancestors_of_id(id, return_list=True)
+            nb_ancestors = max(1, len(ancestors))
+            new_frequency = (0.75 * frequency - nb_ancestors * 0.25)
+            adjusted_frequencies[id] = new_frequency
+        return adjusted_frequencies
+
+    @staticmethod
+    def _get_all_ancestors(concept_ids: List[str], snomed: Snomed):
+        """
+        Retrieves all ancestors of the concept ids present in the list and returns 
+        a list containing the ancestors of each concept id and the concept id itself
+
+        Args:
+            concept_ids: The concept ids to analyze
+            snomed: The SNOMED ontology
+        """
+        all_concepts = []
+        for concept_id in concept_ids:
+            all_concepts.extend(snomed.get_ancestors_of_id(concept_id, return_list=True))
+        return all_concepts
+
+    @staticmethod
+    def get_most_frequent_concepts(text: str, snomed: Snomed, annotator: Annotator, top_n: int = None):
+        """
+        Retrieves the most frequent concepts of a text
+
+        Args:
+            text: The text to analyze
+            snomed: The SNOMED ontology
+            annotator: The annotator to use
+            top_n: The number of concepts to retrieve
+        """
+        concepts = annotator.annotate(text, return_ids_only=True)
+        concepts = DomainClassFrequency._get_all_ancestors(concepts, snomed)
+
+        filter = BranchesFilter(snomed, DomainClassFrequency.EXCLUDE_IDS)
+        concepts = filter(concepts)
         
-        return Counter(filtered_frequencies).most_common(top_n)
-
-
-
-class DomainClassAnalysis:
-    """
-    Class containing the `DomainClassFrequency` of all domains 
-    """
-
-    def __init__(self, snomed: Snomed, annotations: Dict[str, List[AnnotationMatch]], normalize_with_average = True) -> None:
-        self.snomed = snomed
-
-        concepts_per_domain = self.extract_domain_class_frequencies(annotations)
-        self.normalize_with_average = normalize_with_average
-        if normalize_with_average:
-            self.average_class_frequency = self.compute_average_class_frequency(concepts_per_domain)
-        self.domain_class_frequencies: Dict[str, DomainClassFrequency] = self.transform_concepts_per_domain_to_dcf(concepts_per_domain)
-
-    def extract_domain_class_frequencies(self, annotations: Dict[str, List[AnnotationMatch]]) -> Dict[str, List]:
-        """
-        Retrieves all classes in ontology associated to annotation results including the ancestors of those classes
-        for each domain
-        """
-        concepts_per_domain = defaultdict(list)
-        for domain, annotator_results in annotations.items():
-            for annotator_result in tqdm(annotator_results):
-                snomed_id = annotator_result.snomed_id
-                if len(snomed_id) == 0:
-                    continue
-                    
-                concepts_per_domain[domain].append(snomed_id)           
-                
-                ancestors = self.snomed.get_ancestors_of_id(snomed_id, return_list=True)
-                ancestors = ancestors[:min(MAX_ANCESTORS, len(ancestors))]
-
-                if len(ancestors) == 0:
-                    continue
-                
-                for ancestor in ancestors:
-                    concepts_per_domain[domain].append(ancestor)
-        return concepts_per_domain
-
-    def transform_concepts_per_domain_to_dcf(self, concepts_per_domain: Dict[str, List]):
-        """
-        Counts the occurrence of each concept in each domain and creates a domain
-        class frequency mapping while substracting the frequency to the average class
-        frequency
-        """
-        domain_class_frequencies = {}
-        for domain, concepts in concepts_per_domain.items():
-            average_class_frequency = self.average_class_frequency if self.normalize_with_average else None
-            domain_class_frequencies[domain] = DomainClassFrequency(Counter(concepts), domain, average_class_frequency)
-        return domain_class_frequencies
-
-    def compute_average_class_frequency(self, concepts_per_domain: Dict[str, List]):
-        average_class_frequency = {}
-        nb_domains = len(concepts_per_domain.keys())
-        for _, concepts in concepts_per_domain.items():
-            for concept in concepts:
-                if concept in average_class_frequency:
-                    average_class_frequency[concept] += 1 / nb_domains
-                else:
-                    average_class_frequency[concept] = 1 / nb_domains
-        return average_class_frequency
-
-    def save(self, path: str):
-        return joblib.dump(self.domain_class_frequencies, path)
-
+        concepts = DomainClassFrequency._get_adjusted_frequencies(Counter(concepts), snomed)
+        return DomainClassFrequency.format_concept_list(concepts.most_common(top_n))
