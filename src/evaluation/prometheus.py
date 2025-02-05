@@ -1,4 +1,5 @@
 import ast
+from math import floor
 import re
 import itertools
 from typing import List
@@ -433,7 +434,7 @@ class PrometheusResultParser:
                 else:
                     total_matches = data[algo1][algo2]['effective_matches'] if effective_matches else data[algo1][algo2]['total_matches']
                     win_rate = data[algo1][algo2]['effective_win_rate'] if effective_matches else data[algo1][algo2]['win_rate']
-                    info_row.append((win_rate, win_rate, total_matches))
+                    info_row.append((win_rate, round(win_rate * total_matches / 100), total_matches))
                     row.append(win_rate)
 
             info_matrix.append(info_row)

@@ -59,7 +59,7 @@ class PrometheusEvaluationPipeline:
             ids.append(i)
 
             if i % batch_size == 0 and i != 0:
-                result = self.run_inference(prompts, max_new_tokens=256)
+                result = self.run_inference(prompts, max_new_tokens=512)
                 results = [(id_prompt, r) for id_prompt, r in zip(ids, result)]
                 partition.save_results(results)
                 prompts = []

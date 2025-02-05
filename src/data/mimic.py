@@ -7,7 +7,7 @@ from src.data.filter import ClinicalAdmissionFilter
 
 logger = logging.getLogger(__name__)
 
-class MimicLoader:
+class Mimic:
     """
     Loads the MIMIC dataset from the noteevents.csv file.
 

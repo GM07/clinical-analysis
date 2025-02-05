@@ -11,7 +11,7 @@ class MimicVisualizer:
     def __init__(self, mimic_processed_path: str):
         """
         Args:
-            mimic_processed_path: Path to the mimic dataset after being processed by `loader.MimicLoader`
+            mimic_processed_path: Path to the mimic dataset after being processed by `mimic.Mimic`
         """
         self.data = pd.read_csv(mimic_processed_path)
         sns.set_theme('notebook')

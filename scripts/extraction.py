@@ -5,7 +5,7 @@ from src.data.dataset import Dataset, DatasetPartition
 from src.pipelines.extraction_pipeline import ExtractionPipeline, ExtractionPipelineConfig
 
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.INFO,
     format='%(levelname)s - %(message)s',
     force=True # This ensures we override any existing logger configuration
 )

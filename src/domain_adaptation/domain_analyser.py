@@ -4,7 +4,7 @@
 import joblib
 import pandas as pd
 from tqdm import tqdm
-from src.data.loader import MimicLoader
+from src.data.mimic import Mimic
 from src.domain_adaptation.domain_class_frequency import DomainClassFrequency
 from src.ontology.annotator import Annotator
 from src.ontology.snomed import Snomed
@@ -25,7 +25,7 @@ class DomainAnalyser:
         self.domain_class_frequencies = {}
 
     def load_mimic(self):
-        self._mimic_loader = MimicLoader(self.mimic_path)
+        self._mimic_loader = Mimic(self.mimic_path)
         if self.processed_path is None:
             processed_ids = self._mimic_loader.format()['ROW_ID'].tolist()
         else:

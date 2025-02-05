@@ -2,7 +2,7 @@ import logging
 
 from transformers import AutoTokenizer
 
-from src.data.loader import MimicLoader
+from src.data.mimic import Mimic
 from src.data.filter import ComposedFilter, NoteCountFilter, TokenLengthFilter
 from src.pipelines.pipeline import Pipeline
 
@@ -34,7 +34,7 @@ class BhcTaskDatasetPipeline(Pipeline):
 
     def __call__(self):
 
-        loader = MimicLoader(self.mimic_path)
+        loader = Mimic(self.mimic_path)
         logger.info(f'Number of admissions when loaded : {len(loader.data.HADM_ID.unique())}')
         logger.info(f'Number of clinical notes when loaded : {len(loader.data)}')
 

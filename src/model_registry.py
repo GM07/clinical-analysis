@@ -208,8 +208,8 @@ class FastModel:
     """
     Helper class to load HuggingFace models using vllm
     """
-    def __init__(self, model_name: str):
-        self.llm = LLM(model=model_name)
+    def __init__(self, model_name: str, quantization: str = None):
+        self.llm = LLM(model=model_name, quantization=quantization)
 
     def generate(self, prompts: List[str], batch_size: int = 1, sampling_params: SamplingParams = None):
         """
