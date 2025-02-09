@@ -23,6 +23,16 @@ class BhcTaskDatasetPipeline(Pipeline):
         max_tokens_per_note: int = 2048,
         max_total_nb_notes: int = None,
     ):
+        """
+        Args:
+            mimic_path (str): Path to the MIMIC-III dataset
+            output_file_path (str): Path to save the output file
+            tokenizer_path (str): Path to the tokenizer
+            max_nb_notes_per_adm (int): Maximum number of notes per admission
+            max_tokens_per_note (int): Maximum number of tokens per note
+            max_total_nb_notes (int): Maximum number of notes to include
+        """
+
         self.output_file_path = output_file_path
         self.mimic_path = mimic_path
         self.tokenizer_path = tokenizer_path
