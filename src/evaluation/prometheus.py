@@ -205,17 +205,22 @@ class PrometheusResultParser:
         no_concepts = 0 # No concepts were detected
         not_enough_tokens = 0
         correct_generations = 0 # Don't know why, should be 0
+        model_na = 0 # Both models output N/A for the concept
 
         for a_result, b_result, values in tqdm(zip(data['a_result'], data['b_result'], data['result']), total=len(data)):
             a_result = str(a_result)
             b_result = str(b_result)
-            if bleu_score.sentence_bleu(a_result.lower().strip(), b_result.lower().strip()) >= 0.9:
-            # if a_result.strip().lower() == b_result.strip().lower():
-                identical_generations += 1
+
+            if a_result.strip() == 'nan' or b_result.strip() == 'nan':
+                model_na += 1
                 continue
 
             if not isinstance(values, str):
                 no_concepts += 1
+                continue
+
+            if bleu_score.sentence_bleu(a_result.lower().strip(), b_result.lower().strip()) >= 0.9:
+                identical_generations += 1
                 continue
 
             matches = re.findall(self.decision_pattern, values)
@@ -229,6 +234,7 @@ class PrometheusResultParser:
             'no_concepts_found': no_concepts / len(data),
             'not_enough_tokens': not_enough_tokens / len(data),
             'correct_generations': correct_generations / len(data),
+            'model_na': model_na / len(data)
         }
     
     def analyze_ties(self):
@@ -239,6 +245,13 @@ class PrometheusResultParser:
         df: pd.DataFrame = self.dataset.data
         ties = df[df['decision'] == 'tie']
         return self.analyze_generations(data=ties)
+
+    def get_ties(self):
+        """
+        Returns the number of ties in the dataset
+        """
+        df: pd.DataFrame = self.dataset.data
+        return df[df['decision'] == 'tie']
 
     def parse(self):
         """

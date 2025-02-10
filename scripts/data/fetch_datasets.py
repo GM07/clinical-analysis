@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 parser = ArgumentParser(description='Program that fetches the datasets needed to create the Medical Hallucination Dataset')
 parser.add_argument('--out', type=str, required=True, help='Output path where the datasets will be saved')
 
-hf_paths = ['openlifescienceai/medmcqa', 'AGBonnet/augmented-clinical-notes']
+hf_paths = ['openlifescienceai/medmcqa', 'AGBonnet/augmented-clinical-notes', 'starmpcc/Asclepius-Synthetic-Clinical-Notes']
 
 def main():
     args = parser.parse_args()
