@@ -18,13 +18,8 @@ class HuggingFaceDatasetInferencePipeline:
         input_column: str = 'input', 
         output_column: str = 'output',
         chat_mode: bool = True,
-        device: str = None,
     ):
-        if device is None:
-            self.llm = LLM(model=model_path)
-        else:
-            self.llm = LLM(model=model_path, device=device)
-
+        self.llm = LLM(model=model_path)
         self.input_column = input_column
         self.output_column = output_column
         self.chat_mode = chat_mode

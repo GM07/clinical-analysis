@@ -58,7 +58,7 @@ class EvaluatorDatasetSummarizer:
 
     def __init__(self, dataset_path: str, model_checkpoint: str):
         self.dataset = HuggingFaceDataset.from_csv(dataset_path)
-        self.pipeline = HuggingFaceDatasetInferencePipeline(model_checkpoint, input_column='TEXT', output_column='SUMMARY', device='mps')
+        self.pipeline = HuggingFaceDatasetInferencePipeline(model_checkpoint, input_column='TEXT', output_column='SUMMARY')
 
     def prepare_dataset(self):
         self.dataset = self.dataset.map(self.prepare_row)
