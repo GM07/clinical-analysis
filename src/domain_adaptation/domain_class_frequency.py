@@ -18,17 +18,26 @@ class DomainClassFrequency:
 
     def __init__(self, domain: str, frequencies: Dict[str, float]) -> None:
         self.domain = domain
-        self.frequencies = frequencies
         self.counter = Counter(frequencies)
 
-    def get_concepts(self, top_n: int = None):
+    def prune_concepts(self, limit: int = 1000):
+        """
+        Prunes the concepts that are not in the top limit
+        """
+        self.counter = Counter(dict(self.counter.most_common(limit)))
+
+    def get_concepts(self, top_n: int = None, separate: bool = False):
         """
         Retrieves the concepts in the domain. If top_n is provided, only the top_n concepts are retrieved
 
         Args:
             top_n: The number of concepts to retrieve
+            separate: Whether to return the concepts and frequencies separately
         """
-        return self.format_concept_list(self.counter.most_common(top_n))
+        if separate:
+            return self.format_concept_list(self.counter.most_common(top_n))
+        else:
+            return self.counter.most_common(top_n)
 
     def format_concept_list(self, concepts: List[Tuple[str, float]]):
         """
@@ -41,8 +50,33 @@ class DomainClassFrequency:
 
         return concept_ids, frequencies
 
+    def _hash_to_color(self, text: str) -> str:
+        """Convert text to a color using hash"""
+        # Use RGB colors with 256 color mode for more variety
+        # Each channel (r,g,b) can be 0-5, giving 216 colors
+        hash_val = hash(text)
+        r = (hash_val & 0xFF) % 6
+        g = ((hash_val >> 8) & 0xFF) % 6  
+        b = ((hash_val >> 16) & 0xFF) % 6
+        
+        # Convert to xterm-256 color code (16 + 36*r + 6*g + b)
+        color_code = 16 + (36 * r) + (6 * g) + b
+        
+        return f"\033[38;5;{color_code}m{text}\033[0m"
+
+    def print_most_frequent_concepts(self, snomed: Snomed, top_n: int = 5):
+        concepts, frequencies = self.get_concepts(top_n=top_n, separate=True)
+        print(f"\n{self.domain}")
+        labels = snomed.convert_ids_to_labels(concepts)
+        print('\n', '='*100)
+        
+        for label, freq in zip(labels, frequencies):
+            print(f'{label} : {freq}')
+        
+        print('\n', '='*100)
+
     @staticmethod
-    def get_frequencies_of_domain(domain: str, domain_texts: List[str], snomed: Snomed, annotator: Annotator) -> Dict[str, float]:
+    def get_frequencies_of_domain(domain: str, domain_texts: List[str], snomed: Snomed, annotator: Annotator, concept_limit: int = 1000) -> Dict[str, float]:
         """
         Retrieves the frequencies of each concept in the domain
 
@@ -51,6 +85,7 @@ class DomainClassFrequency:
             domain_texts: The texts to analyze
             snomed: The SNOMED ontology
             annotator: The annotator to use
+            concept_limit: The maximum number of concepts to analyze
         """
         batches = annotator.batch_annotate(domain_texts, return_ids_only=True)
         concepts = []
@@ -59,6 +94,7 @@ class DomainClassFrequency:
 
         filter = BranchesFilter(snomed, DomainClassFrequency.EXCLUDE_IDS)
         concepts = filter(concepts)
+        concepts = Counter(concepts).most_common(concept_limit)
 
         concepts = DomainClassFrequency._get_adjusted_frequencies(Counter(concepts), snomed)
         return DomainClassFrequency(domain, concepts)

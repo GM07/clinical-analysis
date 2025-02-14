@@ -420,18 +420,22 @@ class PrometheusResultParser:
         return plt
 
 
-    def heatmap_view(self, effective_matches: bool = True, method_names: List[str] = None, title: str = 'Algorithm Win Rates Heatmap'):
+    def heatmap_view(self, effective_matches: bool = True, method_names: List[str] = None, title: str = None):
         """
         Create a heatmap visualization of win rates between algorithms.
         
         Args:
             data (dict): Nested dictionary containing win rates between algorithms
             effective_matches: Whether to include the parsing errors and ties when calculating the win rates
+            method_names: Names of the methods
+            method_names_y: Names of the methods for the y-axis
             title: title of the figure
         """
         data = self.calculate_win_rates()
+        
 
-        assert len(method_names) == len(list(data.keys())), 'The names of the methods must be of equal length to the number of methods'
+        if method_names is not None:
+            assert len(method_names) == len(list(data.keys())), 'The names of the methods must be of equal length to the number of methods'
 
         algorithms = list(data.keys())
         matrix = []
@@ -453,29 +457,32 @@ class PrometheusResultParser:
             info_matrix.append(info_row)
             matrix.append(row)
         
+        text = [[f'{info_val[0]:.1f}% \n ({info_val[1]} / {info_val[2]})' if info_val[0] != 0 else '-' for val, info_val in zip(row, info_row)] for row, info_row in zip(matrix, info_matrix)]
+        text = [[f'{info_val[0]:.1f}% ' if info_val[0] != 0 else '-' for val, info_val in zip(row, info_row)] for row, info_row in zip(matrix, info_matrix)]
         # Create heatmap
         fig = go.Figure(data=go.Heatmap(
             z=matrix,
             x=method_names if method_names else algorithms,
             y=method_names if method_names else algorithms,
-            text=[[f'{info_val[0]:.1f}% \n ({info_val[1]} / {info_val[2]})' if info_val[0] != 0 else '-' for val, info_val in zip(row, info_row)] for row, info_row in zip(matrix, info_matrix)],
+            text=text,
             texttemplate='%{text}',
-            textfont={"size": 10},
+            # textfont={"size": 12},
             zmax=100,
             zmin=0,
             # colorscale='Reds',
             colorscale='YlGn', #[(0.0, 'white'), (0.01, 'rgb(201, 109, 109)'), (1.0, 'rgb(115, 201, 109)')],
             hoverongaps=False,
-            hovertemplate='%{y} vs %{x}<br>Win Rate: %{z:.1f}%<extra></extra>'
+            hovertemplate='%{y} vs %{x}<br>Win Rate: %{z:.1f}%<extra></extra>',
+            showscale=False
         ))
         
         # Update layout
         fig.update_layout(
             title=title,
-            xaxis_title='Opponent',
-            yaxis_title='Algorithm',
-            width=700,
-            height=600
+            yaxis_title='Algorithm A',
+            xaxis_title='Algorithm B',
+            width=500,
+            height=500,
+            yaxis=dict(tickangle=-90)  # Rotate y-axis labels 90 degrees
         )
-        
         return fig

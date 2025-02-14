@@ -1,14 +1,15 @@
-
-
-
+import logging
 import joblib
 import pandas as pd
+from collections import Counter, defaultdict
 from tqdm import tqdm
 from src.data.mimic import Mimic
 from src.domain_adaptation.domain_class_frequency import DomainClassFrequency
 from src.ontology.annotator import Annotator
 from src.ontology.snomed import Snomed
 
+
+logger = logging.getLogger(__name__)
 
 class DomainAnalyser:
     """
@@ -50,7 +51,7 @@ class DomainAnalyser:
 
         return self.domain_data
 
-    def generate_domain_class_frequencies(self, snomed: Snomed, annotator: Annotator, limit: int = 1000):
+    def generate_domain_class_frequencies(self, snomed: Snomed, annotator: Annotator, limit: int = 1000, concept_limit: int = 1000):
         """
         Generates the class frequencies for each domain
 
@@ -63,10 +64,45 @@ class DomainAnalyser:
         self.cap_domains(limit)
         for domain in tqdm(self.domains, desc='Generating domain class frequencies'):
             domain_data = self.domain_data[self.domain_data['CATEGORY'] == domain]
-            domain_class_frequency = DomainClassFrequency.get_frequencies_of_domain(domain, domain_data['TEXT'].tolist(), snomed, annotator)
+            domain_class_frequency = DomainClassFrequency.get_frequencies_of_domain(domain, domain_data['TEXT'].tolist(), snomed, annotator, concept_limit)
             self.domain_class_frequencies[domain] = domain_class_frequency
+        self.normalize_domain_class_frequencies(limit=limit)
         return self.domain_class_frequencies
 
+    def compute_average_concept_frequencies(self):
+        """
+        Computes the average frequency of each concept across all domains for a single note
+        """
+        average_concept_frequencies = defaultdict(int)
+        for domain in self.domain_class_frequencies:
+            for concept, frequency in self.domain_class_frequencies[domain].counter.items():
+                average_concept_frequencies[concept] += frequency / len(self.domains)
+        return average_concept_frequencies
+
+    def normalize_domain_class_frequencies(self):
+        """
+        Normalizes the domain class frequencies to find the average frequency of each concept across all domains for a single note
+        """
+        
+        average_concept_frequencies = self.compute_average_concept_frequencies()
+
+        logger.info(f'Updating frequencies for {len(self.domains)} domains')
+        for domain in self.domain_class_frequencies:
+            for concept, frequency in self.domain_class_frequencies[domain].frequencies.items():
+                self.domain_class_frequencies[domain].frequencies[concept] = frequency - average_concept_frequencies[concept]
+
+            self.domain_class_frequencies[domain].counter = Counter(self.domain_class_frequencies[domain].frequencies)
+
+        return self.domain_class_frequencies
+
+    def prune_concepts(self, limit: int = 1000):
+        """
+        Prunes the concepts that are not in the top limit
+        """
+        for domain in self.domain_class_frequencies:
+            self.domain_class_frequencies[domain].prune_concepts(limit)
+
+        return self.domain_class_frequencies
 
     def save(self, path: str):
         joblib.dump(self, path)

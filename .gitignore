@@ -1,9 +1,13 @@
 # Personal files
+.DS_Store
 config.ini
 notebooks/
 commands.md
 logs/
 .vscode/
+
+scratch/
+projects/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

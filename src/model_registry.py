@@ -166,6 +166,7 @@ class ModelRegistry:
             checkpoint_id = os.path.basename(checkpoint)
         else:
             logger.info(f'Fetching model from {checkpoint}')
+            checkpoint_id = checkpoint
 
         local_folder_path = checkpoint.replace(checkpoint_id, '') if local else ''
 

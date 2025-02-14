@@ -95,6 +95,7 @@ class Mimic:
         """
         return self.data[~self.data['ROW_ID'].isin(excluded_note_ids)]
 
+
     @staticmethod
     def get_note_ids_from_path(path: str) -> List[int]:
         """
