@@ -2,7 +2,7 @@ import logging
 
 from transformers import AutoTokenizer
 
-from src.data.mimic import Mimic
+from src.data.mimic import Mimic, BHCExtractor
 from src.data.filter import ComposedFilter, NoteCountFilter, TokenLengthFilter
 from src.pipelines.pipeline import Pipeline
 
@@ -22,6 +22,7 @@ class BhcTaskDatasetPipeline(Pipeline):
         max_nb_notes_per_adm: int = 10, 
         max_tokens_per_note: int = 2048,
         max_total_nb_notes: int = None,
+        extract_bhc: bool = True
     ):
         """
         Args:
@@ -39,6 +40,7 @@ class BhcTaskDatasetPipeline(Pipeline):
         self.max_nb_notes_per_adm = max_nb_notes_per_adm
         self.max_tokens_per_note = max_tokens_per_note
         self.max_total_nb_notes = max_total_nb_notes
+        self.extract_bhc = extract_bhc
         logger.info(f'[INIT] Pipeline initialised with self.max_nb_notes_per_adm={self.max_nb_notes_per_adm}, self.max_tokens_per_note={self.max_tokens_per_note}')
 
 
@@ -70,8 +72,19 @@ class BhcTaskDatasetPipeline(Pipeline):
 
             logger.info(f'Number of admissions after capping to {self.max_total_nb_notes} : {len(capped_data.HADM_ID.unique())}')
             logger.info(f'Number of clinical notes after capping to {self.max_total_nb_notes} : {len(capped_data)}')
+
+
+            if self.extract_bhc:
+                extractor = BHCExtractor(data=capped_data)
+                capped_data = extractor.extract()
+
             capped_data.to_csv(self.output_file_path)
             return
+
+
+        if self.extract_bhc:
+            extractor = BHCExtractor(data=filtered_data)
+            filtered_data = extractor.extract()
 
         filtered_data.to_csv(self.output_file_path)
 

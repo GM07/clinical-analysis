@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import List
 
 import pandas as pd
@@ -106,3 +107,42 @@ class Mimic:
         """
         processed_data = pd.read_csv(path)
         return processed_data['ROW_ID'].tolist()
+
+
+class BHCExtractor:
+    """
+    Extracts the BHC from the MIMIC dataset
+    """
+
+    BHC_REGEX = r'(history of present illness|history|hospital course|present illness):\s*([^\n]*(?:\n(?!\n)[^\n]*)*)'
+
+    def __init__(self, data: pd.DataFrame = None, processed_mimic_path: str = None):
+
+        assert data is not None or processed_mimic_path is not None, 'Either data or processed_mimic_path must be provided'
+        assert data is None or processed_mimic_path is None, 'Only one of data or processed_mimic_path must be provided'
+
+        if data is not None:
+            self.processed_data = data
+        else:
+            self.processed_data = pd.read_csv(processed_mimic_path)
+
+    def extract(self) -> pd.DataFrame:
+        """
+        Extracts the BHC from the MIMIC dataset by only adding a value to the 'BHC' column for the discharge summaries
+        """
+
+        # Get the discharge summaries
+        discharge_summaries = self.processed_data['CATEGORY'] == 'Discharge summary'
+
+        # Create a new column called 'BHC'
+        self.processed_data.loc[:, 'BHC'] = None
+
+        def extract_bhc(text: str) -> str:
+            match = re.search(self.BHC_REGEX, text, re.IGNORECASE)
+            if match:
+                return match.group(2)
+            return None
+
+        self.processed_data.loc[discharge_summaries, 'BHC'] = self.processed_data.loc[discharge_summaries, 'TEXT'].apply(extract_bhc)
+
+        return self.processed_data

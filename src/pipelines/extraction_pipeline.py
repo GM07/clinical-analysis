@@ -21,12 +21,23 @@ class ExtractionPipelineConfig:
     nb_concepts: int = 5
     save_frequency: int = 1
 
+@dataclass
+class DomainExtractionPipelineConfig:
+
+    batch_size: int = 5
+    nb_concepts: int = 30
+    save_frequency: int = 1
+
+
 class ExtractionPipeline(Pipeline):
     """
     Pipeline used to extract information from clinical notes using ontological concepts tagged by the MedCat
     annotator. This will save a partition containing, for each clinical notes and ontological concepts, 
     a generation made using greedy search, a generation made using diverse beam search and one made using 
-    ontology-based beam search.
+    ontology-based beam search. This pipeline is mainly used to compare decoding methods in the extraction
+    phase.
+
+    # TODO : Change to PartitionedComparisonExtractionPipeline
     """
 
     def __init__(
@@ -127,12 +138,85 @@ class ExtractionPipeline(Pipeline):
 
         partition.save_results(results)
 
+class DomainExtractionPipeline(Pipeline):
+    """
+    Pipeline used to extract information from clinical notes using ontological concepts tagged by the MedCat
+    annotator. This will store into the `result` attribute, for each clinical notes and ontological concepts, 
+    a generation made using greedy search, a generation made using diverse beam search and one made using 
+    ontology-based beam search. The difference with the `ExtractionPipeline` is that the `DomainExtractionPipeline`
+    will only extract the concepts using the constrained decoding method.
+
+    # TODO : Change to PartitionedExtractionPipeline
+    """
+
+    def __init__(
+        self, 
+        checkpoint_path: str,
+        snomed_path: str,
+        snomed_cache_path: str,
+        medcat_path: str,
+        medcat_device: str = 'cuda',
+    ):
+        """
+        Args:
+            checkpoint_path: Path to the model (if path does not exist locally, the model will be fetched)
+            snomed_path: Path to snomed owl file
+            snomed_cache_path: Path to snomed cache file
+            medcat_path: Path to medcat annotator model
+            medcat_device: Device used by the medcat annotator
+        """
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device)
+
+    def __call__(self, partition: DatasetPartition, extraction_config: DomainExtractionPipelineConfig = DomainExtractionPipelineConfig()):
+        """
+        Executes the pipeline on the dataset
+
+        Args:
+            partition: Partition onto which the pipeline will be ran
+            extraction_config: Configuration for the extraction
+        """
+        """
+        Executes the pipeline on the dataset
+
+        Args:
+            partition: Partition onto which the pipeline will be ran
+            extraction_config: Configuration for the extraction
+        """
+
+        prompter = OntologyBasedPrompter(
+            constrained_model=self.ontology_constrained_model,
+            snomed=self.snomed,
+            annotator=self.medcat,
+        )
+
+        constrained_config = GenerationConfig.ontology_beam_search()
+
+        results = []
+        for i, value in tqdm(partition.iterate(), total=partition.nb_elements_unprocessed()):
+            clinical_note = value['TEXT']
+            constrained_attr_by_id, _ = prompter.start_multiple(
+                clinical_notes=[clinical_note],
+                top_n=extraction_config.nb_concepts,
+                batch_size=extraction_config.batch_size,
+                generation_config=constrained_config
+            )
+            results.append((i, constrained_attr_by_id))
+
+            if i % extraction_config.save_frequency == 0:
+                partition.save_results(results)
+                results = []
+
+        partition.save_results(results)
+
+
 class SingleExtractionPipeline(Pipeline):
     """
     Pipeline used to extract information from clinical notes using ontological concepts tagged by the MedCat
     annotator. This will store into the `result` attribute, for each clinical notes and ontological concepts, 
     a generation made using greedy search, a generation made using diverse beam search and one made using 
     ontology-based beam search. 
+
+    # TODO : Change to ComparisonExtractionPipeline
     """
 
     def __init__(

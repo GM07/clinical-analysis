@@ -190,7 +190,7 @@ class PrometheusResultParser:
         self.prom_result_path = prom_result_path
         self.dataset = PrometheusResultDataset(self.prom_result_path)
         self.decision_pattern = r'(?:\[?Result\]?:?)\s*(N\/A|A|B)\s*(or|and)?\s*(A|B)?' #r'(?:\[RESULT\]) (A|B)'
-        self.tie_pattern = r'(?:\[RESULT\]) (A|B) or (A|B)' # TODO Ties
+        self.tie_pattern = r'(?:\[RESULT\]) (A|B) or (A|B)'
         self.parse()
 
     def analyze_generations(self, data: pd.DataFrame = None):
