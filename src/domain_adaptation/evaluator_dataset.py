@@ -58,14 +58,15 @@ class EvaluatorDatasetSummarizer:
 
     def __init__(self, dataset_path: str, model_checkpoint: str):
         self.dataset = HuggingFaceDataset.from_csv(dataset_path)
-        self.pipeline = HuggingFaceDatasetInferencePipeline(model_checkpoint, input_column='TEXT', output_column='SUMMARY')
+        self.pipeline = HuggingFaceDatasetInferencePipeline(model_checkpoint, input_column='CHAT', output_column='SUMMARY')
+        self.prepare_dataset()
 
     def prepare_dataset(self):
         self.dataset = self.dataset.map(self.prepare_row)
         return self.dataset
 
     def prepare_row(self, row):
-        return row | {'chat': [
+        return row | {'CHAT': [
             {
                 'role': 'system', 
                 'content': 'Your role is to summarize the clinical note provided by the user.'},
