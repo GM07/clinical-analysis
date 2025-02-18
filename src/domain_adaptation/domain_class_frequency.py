@@ -94,7 +94,7 @@ class DomainClassFrequency:
 
         filter = BranchesFilter(snomed, DomainClassFrequency.EXCLUDE_IDS)
         concepts = filter(concepts)
-        concepts = Counter(concepts).most_common(concept_limit)
+        concepts = dict(Counter(concepts).most_common(concept_limit))
 
         concepts = DomainClassFrequency._get_adjusted_frequencies(Counter(concepts), snomed)
         return DomainClassFrequency(domain, concepts)

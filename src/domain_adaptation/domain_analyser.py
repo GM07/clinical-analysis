@@ -34,7 +34,6 @@ class DomainAnalyser:
 
         self.data = self._mimic_loader.get_excluded_notes(processed_ids)
         
-
     def cap_domains(self, limit: int = 1000):
         """
         Will filter the data to include all domains up to the limit
@@ -76,7 +75,7 @@ class DomainAnalyser:
         average_concept_frequencies = defaultdict(int)
         for domain in self.domain_class_frequencies:
             for concept, frequency in self.domain_class_frequencies[domain].counter.items():
-                average_concept_frequencies[concept] += frequency / len(self.domains)
+                average_concept_frequencies[concept] += frequency / len(self.domain_class_frequencies)
         return average_concept_frequencies
 
     def normalize_domain_class_frequencies(self):
@@ -86,12 +85,12 @@ class DomainAnalyser:
         
         average_concept_frequencies = self.compute_average_concept_frequencies()
 
-        logger.info(f'Updating frequencies for {len(self.domains)} domains')
+        logger.info(f'Updating frequencies for {len(self.domain_class_frequencies)} domains')
         for domain in self.domain_class_frequencies:
-            for concept, frequency in self.domain_class_frequencies[domain].frequencies.items():
-                self.domain_class_frequencies[domain].frequencies[concept] = frequency - average_concept_frequencies[concept]
+            for concept, frequency in self.domain_class_frequencies[domain].counter.items():
+                self.domain_class_frequencies[domain].counter[concept] = frequency - average_concept_frequencies[concept]
 
-            self.domain_class_frequencies[domain].counter = Counter(self.domain_class_frequencies[domain].frequencies)
+            self.domain_class_frequencies[domain].counter = Counter(self.domain_class_frequencies[domain].counter)
 
         return self.domain_class_frequencies
 
@@ -132,6 +131,7 @@ class BHCDomainAnalyser(DomainAnalyser):
         self.processed_mimic_path = processed_mimic_path
 
         self.load_mimic()
+        self.domain_class_frequencies = {}
 
     def generate_bhc_class_frequencies(self, snomed: Snomed, annotator: Annotator, limit: int = 1000, concept_limit: int = 1000):
         """
@@ -143,8 +143,8 @@ class BHCDomainAnalyser(DomainAnalyser):
         bhc_class_frequency = DomainClassFrequency.get_frequencies_of_domain('BHC', bhc_data['BHC'].tolist(), snomed, annotator, concept_limit)
         self.domain_class_frequencies['BHC'] = bhc_class_frequency
 
-        discharge_frequency = DomainClassFrequency.get_frequencies_of_domain('Discharge summary', discharge_summaries['TEXT'].tolist(), snomed, annotator, concept_limit)
-        self.domain_class_frequencies['Discharge summary'] = discharge_frequency
+        # discharge_frequency = DomainClassFrequency.get_frequencies_of_domain('Discharge summary', discharge_summaries['TEXT'].tolist(), snomed, annotator, concept_limit)
+        # self.domain_class_frequencies['Discharge summary'] = discharge_frequency
 
-        self.normalize_domain_class_frequencies()
+        # self.normalize_domain_class_frequencies()
         return self.domain_class_frequencies['BHC']
