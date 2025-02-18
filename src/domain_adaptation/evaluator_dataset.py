@@ -83,6 +83,5 @@ class EvaluatorDatasetSummarizer:
         Args:
             batch_size: Batch size for the inference pipeline
         """
-        self.dataset = self.dataset.select(range(1000))
         self.dataset = self.pipeline(self.dataset)
         return self.dataset
