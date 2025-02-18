@@ -14,7 +14,6 @@ parser = ArgumentParser(description='Program that extracts information using ont
 parser.add_argument('--dataset_path', type=str, required=True, help='Path to clinical notes of each domain')
 parser.add_argument('--model_checkpoint', type=str, required=True, help='Path to model checkpoint')
 parser.add_argument('--output_path', type=str, required=True, help='Path to output file')
-parser.add_argument('--batch_size', type=int, default=24, help='Batch size')
 
 def main():
 
@@ -26,7 +25,7 @@ def main():
         model_checkpoint=args.model_checkpoint
     )
     dataset = summarizer.prepare_dataset()
-    dataset = summarizer.summarize(batch_size=args.batch_size)
+    dataset = summarizer.summarize()
 
     dataset.to_csv(args.output_path)
 
