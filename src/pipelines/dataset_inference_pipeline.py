@@ -16,18 +16,12 @@ class MockHuggingFaceDatasetInferencePipeline:
     """
 
     def __call__(self, dataset: HuggingFaceDataset, batch_size: int = 24, max_new_tokens: int = 128):
-        print('yooo')
-        first = True
         results = []
-        print(dataset)
         for data in dataset.batch(batch_size):
-            input = data[self.input_column]
-            if first:
-                print(input)
-                first = False
+            input = data[dataset.column_names[0]]
             results.append(input)
 
-        dataset = dataset.add_column(self.output_column, results)
+        dataset = dataset.add_column(dataset.column_names[0] + '_mock', results)
 
         return dataset
 
