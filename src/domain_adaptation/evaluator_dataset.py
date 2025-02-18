@@ -68,10 +68,10 @@ class EvaluatorDatasetSummarizer:
         return {'ROW_ID': row['ROW_ID']} | {'TEXT': row['TEXT']} | {'CHAT': [
             {
                 'role': 'system', 
-                'content': 'Your role is to summarize the clinical note provided by the user.'},
+                'content': 'Your role is to summarize the clinical note provided by the user. Only output the summary, no other text.'},
             {
                 'role': 'user',
-                'content': f'Summarize the following clinical note: \n{row["TEXT"]}'
+                'content': f'{row["TEXT"]}'
             }
         ]}
 
@@ -83,5 +83,6 @@ class EvaluatorDatasetSummarizer:
         Args:
             batch_size: Batch size for the inference pipeline
         """
+        self.dataset = self.dataset.select(range(1000))
         self.dataset = self.pipeline(self.dataset)
         return self.dataset
