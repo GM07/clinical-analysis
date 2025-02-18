@@ -54,7 +54,7 @@ class HuggingFaceDatasetInferencePipeline(InferencePipeline):
         self.input_column = input_column
         self.output_column = output_column
 
-    def __call__(self, dataset: HuggingFaceDataset, batch_size: int = 24, max_new_tokens: int = 128, apply_chat_template: bool = True):
+    def __call__(self, dataset: HuggingFaceDataset, max_new_tokens: int = 128, apply_chat_template: bool = True):
         """
         Executes the pipeline on the partition
 
@@ -68,11 +68,12 @@ class HuggingFaceDatasetInferencePipeline(InferencePipeline):
             def apply_chat_template_for_row(data):
                 return {f'{self.input_column}_template': self.apply_chat_template(data[self.input_column])}
             dataset = dataset.map(apply_chat_template_for_row, batched=True)
-        
-        for data in dataset.batch(batch_size):
-            input = data[self.input_column + '_template']
-            output = self.run_inference(input, max_new_tokens=max_new_tokens)
-            results.append(output)
+            inputs = dataset[self.input_column + '_template']
+        else:
+            inputs = dataset[self.input_column]
+
+        output = self.run_inference(inputs, max_new_tokens=max_new_tokens)
+        results.extend(output)
 
         dataset = dataset.add_column(self.output_column, results)
 
@@ -91,13 +92,13 @@ class DatasetPartitionInferencePipeline(InferencePipeline):
         super().__init__(model_path)
         self.input_column = input_column
 
-    def __call__(self, partition: DatasetPartition, batch_size: int = 24, max_new_tokens: int = 128, apply_chat_template: bool = True):
+    def __call__(self, partition: DatasetPartition, max_new_tokens: int = 128):
         """
         Executes the pipeline on the partition. Assuming that the input_column already contains a chat template adapted to the model.
 
         Args:
             partition: Partition onto which the pipeline will be ran
-            batch_size: Batch size during inference
+            max_new_tokens: Maximum number of new tokens to generate
         """
 
         results, ids, inputs = [], [], []
@@ -107,12 +108,6 @@ class DatasetPartitionInferencePipeline(InferencePipeline):
             inputs.append(input)
             ids.append(i)
 
-            if i % batch_size == 0 and i != 0:
-                result = self.run_inference(inputs, max_new_tokens=max_new_tokens)
-                results = [(id_input, r) for id_input, r in zip(ids, result)]
-                partition.save_results(results)
-                inputs, ids = [], []
-
-        # Save last batch        
+        result = self.run_inference(inputs, max_new_tokens=max_new_tokens)
         results = [(id_input, r) for id_input, r in zip(ids, result)]
         partition.save_results(results)

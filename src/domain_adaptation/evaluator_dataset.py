@@ -76,12 +76,13 @@ class EvaluatorDatasetSummarizer:
         ]}
 
 
-    def summarize(self, batch_size: int = 24):
+    def summarize(self):
         """
         Summarizes the dataset using the pipeline
 
         Args:
             batch_size: Batch size for the inference pipeline
         """
-        self.dataset = self.pipeline(self.dataset, batch_size=batch_size)
+        self.dataset = self.dataset.select(range(1000))
+        self.dataset = self.pipeline(self.dataset)
         return self.dataset
