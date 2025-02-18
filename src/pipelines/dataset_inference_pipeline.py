@@ -37,7 +37,7 @@ class HuggingFaceDatasetInferencePipeline:
         output_column: str = 'output',
         chat_mode: bool = True,
     ):
-        self.llm = LLM(model=model_path)
+        self.llm = LLM(model=model_path, tokenizer=model_path)
         self.input_column = input_column
         self.output_column = output_column
         self.chat_mode = chat_mode
