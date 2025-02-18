@@ -24,7 +24,7 @@ def main():
         dataset_path=args.dataset_path,
         model_checkpoint=args.model_checkpoint
     )
-
+    dataset = summarizer.prepare_dataset()
     dataset = summarizer.summarize()
 
     dataset.to_csv(args.output_path)

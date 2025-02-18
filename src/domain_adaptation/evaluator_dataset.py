@@ -5,7 +5,7 @@ from src.model_registry import FastModel, ModelRegistry
 from datasets import Dataset as HuggingFaceDataset
 import logging
 
-from src.pipelines.dataset_inference_pipeline import HuggingFaceDatasetInferencePipeline
+from src.pipelines.dataset_inference_pipeline import HuggingFaceDatasetInferencePipeline, MockHuggingFaceDatasetInferencePipeline
 
 logger = logging.getLogger(__name__)
 
@@ -58,15 +58,15 @@ class EvaluatorDatasetSummarizer:
 
     def __init__(self, dataset_path: str, model_checkpoint: str):
         self.dataset = HuggingFaceDataset.from_csv(dataset_path)
-        self.pipeline = HuggingFaceDatasetInferencePipeline(model_checkpoint, input_column='CHAT', output_column='SUMMARY')
-        self.prepare_dataset()
+        self.pipeline = MockHuggingFaceDatasetInferencePipeline() # HuggingFaceDatasetInferencePipeline(model_checkpoint, input_column='CHAT', output_column='SUMMARY')
+        # self.prepare_dataset()
 
-    def prepare_dataset(self):
-        self.dataset = self.dataset.map(self.prepare_row)
+    def prepare_dataset(self, load_from_cache_file: bool = True):
+        self.dataset = self.dataset.map(self.prepare_row, load_from_cache_file=load_from_cache_file, remove_columns=self.dataset.column_names)
         return self.dataset
 
     def prepare_row(self, row):
-        return row | {'CHAT': [
+        return {'ROW_ID': row['ROW_ID']} | {'TEXT': row['TEXT']} | {'CHAT': [
             {
                 'role': 'system', 
                 'content': 'Your role is to summarize the clinical note provided by the user.'},

@@ -6,6 +6,30 @@ from tqdm import tqdm
 from vllm import LLM, SamplingParams
 from src.data.dataset import DatasetPartition
 from datasets import Dataset as HuggingFaceDataset
+import logging
+
+logger = logging.getLogger(__name__)
+
+class MockHuggingFaceDatasetInferencePipeline:
+    """
+    Mock pipeline class for LLM inference using vLLM on a dataset's partition
+    """
+
+    def __call__(self, dataset: HuggingFaceDataset, batch_size: int = 24, max_new_tokens: int = 128):
+        print('yooo')
+        first = True
+        results = []
+        print(dataset)
+        for data in dataset.batch(batch_size):
+            input = data[self.input_column]
+            if first:
+                print(input)
+                first = False
+            results.append(input)
+
+        dataset = dataset.add_column(self.output_column, results)
+
+        return dataset
 
 class HuggingFaceDatasetInferencePipeline:
     """
