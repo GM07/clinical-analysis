@@ -27,7 +27,7 @@ def main():
 
     dataset = summarizer.summarize()
 
-    dataset.save(args.output_path)
+    dataset.to_csv(args.output_path)
 
 
 if __name__ == '__main__':
