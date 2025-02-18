@@ -65,13 +65,13 @@ class EvaluatorDatasetSummarizer:
         return self.dataset
 
     def prepare_row(self, row):
-        return {'ROW_ID': row['ROW_ID']} | {'TEXT': row['TEXT']} | {'CHAT': [
+        return {'ROW_ID': row['ROW_ID']} | {'CATEGORY': row['CATEGORY']} | {'TEXT': row['TEXT']} | {'CHAT': [
             {
                 'role': 'system', 
-                'content': 'Your role is to summarize the clinical note provided by the user. Only output the summary, no other text.'},
+                'content': 'Your role is to summarize the clinical note provided by the user in less than 250 words. Only output the summary, no other text.'},
             {
                 'role': 'user',
-                'content': f'{row["TEXT"]}'
+                'content': row['TEXT']
             }
         ]}
 
@@ -83,6 +83,5 @@ class EvaluatorDatasetSummarizer:
         Args:
             batch_size: Batch size for the inference pipeline
         """
-        self.dataset = self.dataset.select(range(1000))
-        self.dataset = self.pipeline(self.dataset)
+        self.dataset = self.pipeline(self.dataset, max_new_tokens=384)
         return self.dataset
