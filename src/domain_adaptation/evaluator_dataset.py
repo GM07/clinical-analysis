@@ -5,7 +5,7 @@ from src.model_registry import FastModel, ModelRegistry
 from datasets import Dataset as HuggingFaceDataset
 import logging
 
-from src.pipelines.dataset_inference_pipeline import HuggingFaceDatasetInferencePipeline, MockHuggingFaceDatasetInferencePipeline
+from src.pipelines.dataset_inference_pipeline import HuggingFaceDatasetInferencePipeline
 
 logger = logging.getLogger(__name__)
 
