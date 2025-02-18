@@ -32,11 +32,13 @@ class HuggingFaceDatasetInferencePipeline:
             partition: Partition onto which the pipeline will be ran
             batch_size: Batch size during inference
         """
-
+        results = []
         for data in dataset.batch(batch_size):
             input = data[self.input_column]
             output = self.run_inference(input, max_new_tokens=max_new_tokens)
-            data[self.output_column] = output
+            results.append(output)
+
+        dataset = dataset.add_column(self.output_column, results)
 
         return dataset
 

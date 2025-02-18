@@ -65,7 +65,7 @@ class EvaluatorDatasetSummarizer:
         return self.dataset
 
     def prepare_row(self, row):
-        return [
+        return row | {'chat': [
             {
                 'role': 'system', 
                 'content': 'Your role is to summarize the clinical note provided by the user.'},
@@ -73,7 +73,7 @@ class EvaluatorDatasetSummarizer:
                 'role': 'user',
                 'content': f'Summarize the following clinical note: \n{row["TEXT"]}'
             }
-        ]
+        ]}
 
 
     def summarize(self):
