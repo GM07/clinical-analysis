@@ -39,7 +39,8 @@ class DomainClassFrequency:
         else:
             return self.counter.most_common(top_n)
 
-    def format_concept_list(self, concepts: List[Tuple[str, float]]):
+    @staticmethod
+    def format_concept_list(concepts: List[Tuple[str, float]]):
         """
         """
         concept_ids = []
@@ -143,6 +144,9 @@ class DomainClassFrequency:
             snomed: The SNOMED ontology
             annotator: The annotator to use
             top_n: The number of concepts to retrieve
+
+        Returns:
+            A tuple containing the concept ids and the frequencies
         """
         concepts = annotator.annotate(text, return_ids_only=True)
         concepts = DomainClassFrequency._get_all_ancestors(concepts, snomed)
@@ -150,5 +154,5 @@ class DomainClassFrequency:
         filter = BranchesFilter(snomed, DomainClassFrequency.EXCLUDE_IDS)
         concepts = filter(concepts)
         
-        concepts = DomainClassFrequency._get_adjusted_frequencies(Counter(concepts), snomed)
+        concepts = Counter(DomainClassFrequency._get_adjusted_frequencies(Counter(concepts), snomed))
         return DomainClassFrequency.format_concept_list(concepts.most_common(top_n))

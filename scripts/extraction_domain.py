@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 import logging
 
 from src.data.dataset import Dataset, DatasetPartition
-from src.pipelines.extraction_pipeline import DomainExtractionPipeline, DomainExtractionPipelineConfig
+from src.pipelines.extraction_pipeline import PartitionedExtractionPipeline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,7 +25,7 @@ def main():
 
     print('Called with arguments : ', args)
 
-    pipeline = DomainExtractionPipeline(
+    pipeline = PartitionedExtractionPipeline(
         checkpoint_path=args.checkpoint,
         snomed_path=args.snomed,
         snomed_cache_path=args.snomed_cache,
