@@ -64,7 +64,7 @@ class EvaluatorTrainer:
         output_dir: str = None, 
         batch_size: int = 16, 
         learning_rate: float = 2e-5, 
-        num_epochs: int = 1, 
+        num_epochs: int = 3, 
         weight_decay: float = 0.01, 
         resume_from_checkpoint: bool = None
     ):
@@ -87,8 +87,10 @@ class EvaluatorTrainer:
                 per_device_eval_batch_size=batch_size,
                 num_train_epochs=num_epochs,
                 weight_decay=weight_decay,
-                eval_strategy="epoch",
-                save_strategy="epoch",
+                eval_strategy="steps",
+                save_strategy="steps",
+                eval_steps=1000,
+                save_steps=1000
             )
         
         trainer = Trainer(
