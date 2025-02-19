@@ -59,7 +59,15 @@ class EvaluatorTrainer:
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_checkpoint)
         self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
 
-    def train(self, output_dir: str = None, batch_size: int = 16, learning_rate: float = 2e-5, num_epochs: int = 1, weight_decay: float = 0.01):
+    def train(
+        self, 
+        output_dir: str = None, 
+        batch_size: int = 16, 
+        learning_rate: float = 2e-5, 
+        num_epochs: int = 1, 
+        weight_decay: float = 0.01, 
+        resume_from_checkpoint: str = None
+    ):
         """
         Trains the model on the dataset.
 
@@ -69,6 +77,7 @@ class EvaluatorTrainer:
             learning_rate (float): The learning rate.
             num_epochs (int): The number of epochs.
             weight_decay (float): The weight decay.
+            resume_from_checkpoint (str): The path to the checkpoint to resume from.
         """
         if output_dir is None:
             training_args = TrainingArguments(
@@ -92,7 +101,7 @@ class EvaluatorTrainer:
             compute_metrics=self.evaluate
         )
 
-        trainer.train()
+        trainer.train(resume_from_checkpoint=resume_from_checkpoint)
 
     def evaluate(self, eval_pred):
         predictions, references = eval_pred
