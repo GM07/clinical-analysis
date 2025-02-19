@@ -14,12 +14,13 @@ parser = ArgumentParser(description='Program that extracts information using ont
 
 parser.add_argument('--dataset_path', type=str, required=True, help='Path to huggingface dataset used to train the evaluator')
 parser.add_argument('--model_checkpoint', type=str, required=True, help='Path to model checkpoint')
-parser.add_argument('--resume_from_checkpoint', type=bool, required=False, help='Path to checkpoint to resume from')
+parser.add_argument('--resume_from_checkpoint', type=bool, required=False, help='If True, resume from checkpoint')
 
 def main():
 
     args = parser.parse_args()
 
+    print('Called with arguments : ', args)
 
     trainer = EvaluatorTrainer(
         model_checkpoint=args.model_checkpoint,
@@ -27,11 +28,6 @@ def main():
         local=False
     )
 
-    print('Called with arguments : ', args)
-    trainer = EvaluatorTrainer(
-        dataset_path=args.dataset_path,
-        model_checkpoint=args.model_checkpoint
-    )
 
     trainer.train(batch_size=128, resume_from_checkpoint=args.resume_from_checkpoint)
 
