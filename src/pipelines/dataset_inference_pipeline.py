@@ -66,7 +66,15 @@ class HuggingFaceDatasetInferencePipeline(InferencePipeline):
 
         if apply_chat_template:
             def apply_chat_template_for_row(data):
-                return {f'{self.input_column}_template': self.apply_chat_template(data[self.input_column])}
+                input = data[self.input_column]
+
+                if isinstance(input, str):
+                    input = [{
+                        'role': 'user',
+                        'content': input
+                    }]
+
+                return {f'{self.input_column}_template': self.apply_chat_template(input)}
             dataset = dataset.map(apply_chat_template_for_row, batched=True)
             inputs = dataset[self.input_column + '_template']
         else:
