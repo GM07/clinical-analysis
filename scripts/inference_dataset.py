@@ -34,9 +34,9 @@ def main():
 
     dataset = HuggingFaceDataset.from_csv(args.dataset)
 
-    pipeline(dataset)
+    output_dataset = pipeline(dataset)
 
-    dataset.to_csv(args.output_path, index=False)
+    output_dataset.to_csv(args.output_path, index=False)
 
 if __name__ == '__main__':
     main()
