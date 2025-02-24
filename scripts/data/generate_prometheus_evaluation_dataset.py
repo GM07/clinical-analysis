@@ -3,7 +3,7 @@ import logging
 
 import pandas as pd
 
-from src.data.dataset import ExtractionDataset
+from src.data.dataset import ComparisonExtractionDataset
 from src.evaluation.prometheus import PrometheusPromptGenerator
 
 
@@ -27,7 +27,7 @@ def main():
 
     print('Called with arguments : ', args)
 
-    extraction_results = ExtractionDataset(args.dataset)
+    extraction_results = ComparisonExtractionDataset(dataset_path=args.dataset)
 
     evaluator = PrometheusPromptGenerator(
         args.snomed,

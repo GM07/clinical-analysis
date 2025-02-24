@@ -14,7 +14,7 @@ from nltk.translate import bleu_score
 import pandas as pd
 from tqdm import tqdm
 
-from src.data.dataset import Dataset, ExtractionDataset
+from src.data.dataset import Dataset, ComparisonExtractionDataset
 from src.generation.templates import BASE_PROMPT_TEMPLATE
 from src.ontology.snomed import Snomed
 
@@ -109,7 +109,7 @@ class PrometheusPromptGenerator:
 
     def generate_prompts(
         self, 
-        extraction_dataset: ExtractionDataset, 
+        extraction_dataset: ComparisonExtractionDataset, 
         rubric: str,
         output_file_path: str,
     ):
@@ -121,9 +121,9 @@ class PrometheusPromptGenerator:
             rubric: Rubric used to evaluate each sample
             output_file_path: Where to save the prompts
         """
-        clinical_note_column = ExtractionDataset.CLINICAL_NOTE_COLUMN
-        clinical_note_id_column = ExtractionDataset.CLINICAL_NOTE_ID_COLUMN
-        result_columns = ExtractionDataset.RESULT_COLUMNS
+        clinical_note_column = ComparisonExtractionDataset.CLINICAL_NOTE_COLUMN
+        clinical_note_id_column = ComparisonExtractionDataset.CLINICAL_NOTE_ID_COLUMN
+        result_columns = ComparisonExtractionDataset.RESULT_COLUMNS
 
         combinations = list(itertools.permutations(result_columns, r=2))
         results = extraction_dataset.data

@@ -81,6 +81,7 @@ class HuggingFaceDatasetInferencePipeline(InferencePipeline):
         results.extend(output)
 
         dataset = dataset.add_column(self.output_column, results)
+        dataset = dataset.remove_columns(f'{self.input_column}_template')
 
         return dataset
 

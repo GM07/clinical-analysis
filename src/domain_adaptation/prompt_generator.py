@@ -1,20 +1,27 @@
 import pandas as pd
 
-from src.generation.templates import BHC_BASE_TEMPLATE, DOMAIN_ADAPTATION_TEMPLATE
+from src.data.dataset import PrunedConceptDataset
+from src.generation.templates import BHC_BASE_TEMPLATE, DOMAIN_ADAPTATION_TEMPLATE, PRUNED_CONCEPT_TEMPLATE
+from src.ontology.snomed import Snomed
 
 class PromptGenerator:
     """
     Class used to generate prompts for the BHC pipeline
     """
 
-    def __init__(self, mimic_bhc_path: str, template: str):
+    def __init__(self, mimic: str | pd.DataFrame, template: str):
         """
         Args:
-            mimic_bhc_path: Path to the mimic dataset containing the BHC section extracted from the discharge summaries
+            mimic: Path to the mimic dataset processed
             template: Template to use for the prompts
         """
-        self.mimic_bhc_path = mimic_bhc_path
-        self.dataset = pd.read_csv(self.mimic_bhc_path)
+        if isinstance(mimic, str):
+            self.mimic = mimic
+            self.dataset = pd.read_csv(self.mimic)
+        else:
+            self.mimic = None
+            self.dataset = mimic
+
         self.template = template
 
         assert '{clinical_notes}' in self.template, 'The tag "{clinical_notes}" must be present in the template'
@@ -38,17 +45,17 @@ class PromptGenerator:
         prompts = self.dataset.groupby('HADM_ID')['TEXT'].aggregate(admission_to_prompt)
         return pd.DataFrame({'HADM_ID': prompts.index, 'PROMPT': prompts.values})
 
-        
+
 class DomainAdaptationPromptGenerator(PromptGenerator):
     """
-    Class used to generate prompts for the domain adaptation pipeline
+    Class used to generate prompts for the domain adaptation pipeline to establish a baseline for the domain adaptation task
     """
 
-    def __init__(self, mimic_bhc_path: str, domains: list[str] = ['Nursing', 'ECG', 'Radiology']):
-        super().__init__(mimic_bhc_path, DOMAIN_ADAPTATION_TEMPLATE)
+    def __init__(self, mimic: str | pd.DataFrame, domains: list[str] = ['Nursing', 'ECG', 'Radiology']):
+        super().__init__(mimic, DOMAIN_ADAPTATION_TEMPLATE)
         self.domains = domains
 
-    def generate_prompts(self,):
+    def generate_prompts(self):
         """
         Generate prompts for the domain adaptation pipeline
         """
@@ -68,8 +75,8 @@ class BHCPromptGenerator(PromptGenerator):
     Class used to generate prompts for the BHC pipeline
     """
 
-    def __init__(self, mimic_bhc_path: str):
-        super().__init__(mimic_bhc_path, BHC_BASE_TEMPLATE)
+    def __init__(self, mimic: str | pd.DataFrame):
+        super().__init__(mimic, BHC_BASE_TEMPLATE)
 
     def generate_prompts(self,):
         """
@@ -78,3 +85,57 @@ class BHCPromptGenerator(PromptGenerator):
         bhc = self.dataset[self.dataset['BHC'].notna()]
         prompts = super().generate_prompts()
         return pd.merge(bhc, prompts, on='HADM_ID', how='left').drop(columns=['NOTE_ORDER'])
+
+
+class PrunedConceptPromptGenerator(PromptGenerator):
+    """
+    Class used to generate prompts for the pruned concept pipeline
+    """
+
+    def __init__(self, mimic: str | pd.DataFrame, snomed: Snomed, input_column: str = 'TEXT'):
+        """
+        Args:
+            mimic: Path to the mimic dataset processed
+            snomed: Snomed ontology
+            input_column: Column to use for the input (column must be a valid PrunedConceptDataset input column)
+        """
+        super().__init__(mimic, PRUNED_CONCEPT_TEMPLATE)
+        self.snomed = snomed
+        self.input_column = input_column
+
+        assert PrunedConceptDataset.valid_pruned_concept_column(self.input_column), f'The input column "{self.input_column}" is not a valid column. It should be of a valid PrunedConceptDataset input column'
+
+    def generate_prompts(self,):
+        """
+        Generate prompts for the BHC pipeline
+        """
+        self.dataset = self.dataset[self.dataset['CATEGORY'] != 'Discharge summary']
+
+        def admission_to_prompt(clinical_notes_series):
+            clinical_notes = clinical_notes_series.tolist()
+
+            note_strings = []
+            for i, note in enumerate(clinical_notes):
+                clinical_note_string = ''
+
+                for concept_id, sentence in note.items():
+                    if sentence == 'N/A':
+                        continue
+
+                    concept_label = self.snomed.get_label_from_id(concept_id)
+                    clinical_note_string += f'{concept_label} : {sentence}\n'
+
+                if len(clinical_note_string.strip()) > 0:
+                    note_strings.append(clinical_note_string)
+            if len(note_strings) == 0:
+                return 'N/A'
+
+            note_strings = list(filter(lambda x: x != '', note_strings))
+            note_strings = [f'### Clinical note {i+1}\n{note}' for i, note in enumerate(note_strings)]
+            prompt = self.template.format(clinical_notes='\n' + '\n'.join(note_strings))
+            return prompt
+
+        prompts = self.dataset.groupby('HADM_ID')[self.input_column].aggregate(admission_to_prompt)
+        return pd.DataFrame({'HADM_ID': prompts.index, 'PROMPT': prompts.values})
+
+        
