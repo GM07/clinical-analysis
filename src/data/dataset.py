@@ -507,14 +507,16 @@ class PrunedConceptDataset(ExtractionDataset):
 
     The column `column` corresponds to the column that contains the pruned extractions.
     """
-    def __init__(self, column: str, dataset_path: str = None, data: pd.DataFrame = None):
-        super().__init__(column=column, dataset_path=dataset_path, data=data)
+    def __init__(self, columns: List[str], dataset_path: str = None, data: pd.DataFrame = None):
+        self.columns = columns
+        super().__init__(column=columns[0], dataset_path=dataset_path, data=data)
 
-        self.verify()
-        self.prepare()
-        
     def verify(self):
-        assert PrunedConceptDataset.valid_pruned_concept_column(self.column), f'The column "{self.column}" is not a valid column. It should be of a valid PrunedConceptDataset input column'
+        for column in self.columns:
+            assert PrunedConceptDataset.valid_pruned_concept_column(column), f'The column "{column}" is not a valid column. It should be of a valid PrunedConceptDataset input column'
+
+    def result_columns(self):
+        return self.columns
 
     @staticmethod
     def valid_pruned_concept_column(column: str):

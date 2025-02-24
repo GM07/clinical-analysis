@@ -92,7 +92,7 @@ class PrunedConceptPromptGenerator(PromptGenerator):
     Class used to generate prompts for the pruned concept pipeline
     """
 
-    def __init__(self, mimic: str | pd.DataFrame, snomed: Snomed, input_column: str = 'TEXT'):
+    def __init__(self, mimic: str | pd.DataFrame, snomed: Snomed, input_columns: list[str] = None):
         """
         Args:
             mimic: Path to the mimic dataset processed
@@ -101,9 +101,10 @@ class PrunedConceptPromptGenerator(PromptGenerator):
         """
         super().__init__(mimic, PRUNED_CONCEPT_TEMPLATE)
         self.snomed = snomed
-        self.input_column = input_column
+        self.input_columns = input_columns
 
-        assert PrunedConceptDataset.valid_pruned_concept_column(self.input_column), f'The input column "{self.input_column}" is not a valid column. It should be of a valid PrunedConceptDataset input column'
+        for input_col in self.input_columns:
+            assert PrunedConceptDataset.valid_pruned_concept_column(input_col), f'The input column "{input_col}" is not a valid column. It should be of a valid PrunedConceptDataset input column'
 
     def generate_prompts(self,):
         """
@@ -117,6 +118,8 @@ class PrunedConceptPromptGenerator(PromptGenerator):
             note_strings = []
             for i, note in enumerate(clinical_notes):
                 clinical_note_string = ''
+                if isinstance(note, str):
+                    print(note)
 
                 for concept_id, sentence in note.items():
                     if sentence == 'N/A':
@@ -135,7 +138,17 @@ class PrunedConceptPromptGenerator(PromptGenerator):
             prompt = self.template.format(clinical_notes='\n' + '\n'.join(note_strings))
             return prompt
 
-        prompts = self.dataset.groupby('HADM_ID')[self.input_column].aggregate(admission_to_prompt)
-        return pd.DataFrame({'HADM_ID': prompts.index, 'PROMPT': prompts.values})
+        prompts = {}
+        hadm_ids = []
+        for input_column in self.input_columns:
+            p = self.dataset.groupby('HADM_ID')[input_column].aggregate(admission_to_prompt)
+            prompts[f'{input_column}_verbalizer_prompt'] = p.values
+
+            if len(hadm_ids) == 0:
+                hadm_ids = p.index
+            else:
+                assert (hadm_ids == p.index).all(), 'The HADM_IDs are not the same for all input columns'
+
+        return pd.DataFrame({'HADM_ID': hadm_ids} | prompts)
 
         
