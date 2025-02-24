@@ -35,14 +35,15 @@ def main():
     verbalizer = Verbalizer(model_path=args.model_path, input_columns=columns, snomed=snomed)
 
     pruned_dataset = PrunedConceptDataset(columns=columns, dataset_path=args.dataset)
+    verbalized_dataset = verbalizer.verbalize_dataset(pruned_dataset)
     # logger.info(f'Verbalizing dataset with {len(pruned_dataset)} rows and columns : {pruned_dataset.column_names}')
 
     # for dcf_path in args.dcf_files:
-        # dcf = DomainClassFrequency.load(dcf_path)
-        # pruner = Pruner(dcf, snomed)
-        # pruner.prune_dataset(dataset, args.input_column, args.alpha)
+    #     dcf = DomainClassFrequency.load(dcf_path)
+    #     pruner = Pruner(dcf, snomed)
+    #     pruner.prune_dataset(dataset, args.input_column, args.alpha)
     
-    # dataset.save(args.output_dataset)
+    verbalized_dataset.save(args.output_dataset)
 
 if __name__ == '__main__':
     main()
