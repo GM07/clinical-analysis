@@ -4,6 +4,8 @@ import logging
 from src.data.dataset import Dataset, DatasetPartition
 from src.pipelines.extraction_pipeline import DatasetComparisonExtractionPipeline, ExtractionPipelineConfig
 
+from datasets import Dataset as HuggingFaceDataset
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(levelname)s - %(message)s',
@@ -27,7 +29,7 @@ def main():
     print('Called with arguments : ', args)
 
     print('Loading dataset from : ', args.dataset_path)
-    dataset = Dataset.from_csv(args.dataset_path)
+    dataset = HuggingFaceDataset.from_csv(args.dataset_path)
 
     pipeline = DatasetComparisonExtractionPipeline(
         checkpoint_path=args.checkpoint,
