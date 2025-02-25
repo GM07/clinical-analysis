@@ -43,7 +43,7 @@ def main():
     #     pruner = Pruner(dcf, snomed)
     #     pruner.prune_dataset(dataset, args.input_column, args.alpha)
     
-    verbalized_dataset.save(args.output_dataset)
+    verbalized_dataset.to_csv(args.output_dataset, index=False)
 
 if __name__ == '__main__':
     main()
