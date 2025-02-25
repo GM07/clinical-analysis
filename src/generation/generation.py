@@ -421,7 +421,7 @@ class OntologyBasedPrompter:
         Tuple of dictionaries where the first dictionary contains {concept_id: extraction} and the 
         second dictionary contains {concept_label: extraction}
         """ 
-        most_frequent_concepts = DomainClassFrequency.get_most_frequent_concepts(
+        most_frequent_concepts, _ = DomainClassFrequency.get_most_frequent_concepts(
             text=clinical_note, 
             snomed=self.snomed, 
             annotator=self.annotator, 
