@@ -5,7 +5,7 @@ import joblib
 
 from src.ontology.ontology_filter import BranchesFilter
 from src.ontology.snomed import Snomed
-from src.ontology.annotator import AnnotationMatch, Annotator
+from src.ontology.annotator import Annotator
 
 MAX_ANCESTORS = 2
 
