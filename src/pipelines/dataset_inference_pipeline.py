@@ -1,9 +1,10 @@
-
-
-
+import sys
 from typing import List
 from tqdm import tqdm
-from vllm import LLM, SamplingParams
+
+if 'vllm' in sys.modules:
+    from vllm import LLM, SamplingParams
+
 from src.data.dataset import DatasetPartition
 from datasets import Dataset as HuggingFaceDataset
 import logging

@@ -26,5 +26,5 @@ Sentences were extracted from multiple clinical notes based on a medical concept
 -------------------
 {clinical_notes}
 -------------------
-Summarize the hospital course of the patient based on the extractions of each clinical note. Only output the summary.
+Summarize the clinical notes of the patient based on the extractions of each clinical note. Only output the summary and nothing else.
 """

@@ -10,7 +10,7 @@ from datasets import Dataset as HuggingFaceDataset
 from src.data.dataset import DatasetPartition
 from src.generation.generation import OntologyBasedPrompter, OntologyConstrainedModel
 from src.generation.ontology_beam_scorer import GenerationConfig
-from src.ontology.annotator import MedCatAnnotator
+from src.ontology.medcat_annotator import MedCatAnnotator
 from src.ontology.snomed import Snomed
 from src.pipelines.dataset_inference_pipeline import HuggingFaceDatasetInferencePipeline
 from src.pipelines.pipeline import Pipeline
@@ -130,8 +130,8 @@ class DatasetExtractionPipeline(ExtractionPipeline):
         Executes the pipeline on the dataset
 
         Args:
-            clinical_note: Clinical note onto which the pipeline will be ran
-            ids: List of ids indentifying the clinical note
+            dataset: Dataset onto which the pipeline will be ran
+            generation_config: Configuration for the generation
             extraction_config: Configuration for the extraction
         """
         if generation_config == GenerationConfig.greedy_search():
@@ -193,12 +193,89 @@ class DatasetExtractionPipeline(ExtractionPipeline):
             'content': prompt
         }]
 
+class DatasetComparisonExtractionPipeline(ExtractionPipeline):
+    """
+    Pipeline used to extract information from clinical notes using ontological concepts tagged by the MedCat
+    annotator. This pipeline will return for each sample in the dataset a generation made using greedy search, 
+    a generation made using diverse beam search and one made using ontology-based beam search. 
+    """
+    def __init__(
+        self, 
+        checkpoint_path: str,
+        snomed_path: str,
+        snomed_cache_path: str,
+        medcat_path: str,
+        medcat_device: str = 'cuda',
+        loading_config: LoadingConfig = LoadingConfig()
+    ):
+        """
+        Args:
+            checkpoint_path: Path to the model (if path does not exist locally, the model will be fetched)
+            snomed_path: Path to snomed owl file
+            snomed_cache_path: Path to snomed cache file
+            medcat_path: Path to medcat annotator model
+            medcat_device: Device used by the medcat annotator
+            loading_config: Loading configuration used to load the model
+        """
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config)
+
+
+    def __call__(self, dataset: HuggingFaceDataset, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
+        """
+        Executes the pipeline on the dataset
+
+        Args:
+            dataset: Dataset onto which the pipeline will be ran
+            extraction_config: Configuration for the extraction
+        """
+
+        prompter = OntologyBasedPrompter(
+            constrained_model=self.ontology_constrained_model,
+            snomed=self.snomed,
+            annotator=self.medcat,
+        )
+
+        normal_config = GenerationConfig.greedy_search()
+        beam_config = GenerationConfig.beam_search()
+        constrained_config = GenerationConfig.ontology_beam_search()
+
+        results = []
+        for row in tqdm(dataset, total=len(dataset)):
+            clinical_note = row['TEXT']
+            normal_attr_by_id, _ = prompter.start_multiple(
+                clinical_notes=[clinical_note],
+                top_n=extraction_config.nb_concepts,
+                batch_size=extraction_config.batch_size,
+                generation_config=normal_config
+            )
+
+            beam_attr_by_id, _ = prompter.start_multiple(
+                clinical_notes=[clinical_note],
+                top_n=extraction_config.nb_concepts,
+                batch_size=extraction_config.batch_size,
+                generation_config=beam_config
+            )
+
+            constrained_attr_by_id, _ = prompter.start_multiple(
+                clinical_notes=[clinical_note],
+                top_n=extraction_config.nb_concepts,
+                batch_size=extraction_config.batch_size,
+                generation_config=constrained_config
+            )
+
+            self.results = (normal_attr_by_id, beam_attr_by_id, constrained_attr_by_id)
+            results.append(constrained_attr_by_id)
+
+        dataset = dataset.add_column('OUTPUT', results)
+
+        return dataset
+
 class ComparisonExtractionPipeline(ExtractionPipeline):
     """
     Pipeline used to extract information from clinical notes using ontological concepts tagged by the MedCat
-    annotator. This will store into the `result` attribute, for each clinical notes and ontological concepts, 
-    a generation made using greedy search, a generation made using diverse beam search and one made using 
-    ontology-based beam search. 
+    annotator. This pipeline will return a generation made using greedy search, a generation made using 
+    diverse beam search and one made using ontology-based beam search. Only one clinical note at a time is
+    supported.
     """
 
     def __init__(

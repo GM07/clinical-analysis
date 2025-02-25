@@ -444,7 +444,7 @@ class ExtractionDataset(Dataset):
 
     The dataset should have at least the column 'TEXT' and one of the following columns : 'normal', 'beam' or 'constrained'.
 
-    The column `column` corresponds to the column that contains the extractions.
+    The column `column` corresponds to the column that contains the extractions. An extraction dataset column always contains dictionaries
     """
     CLINICAL_NOTE_COLUMN = 'TEXT'
     CLINICAL_NOTE_ID_COLUMN = 'ROW_ID'
@@ -522,6 +522,66 @@ class PrunedConceptDataset(ExtractionDataset):
     def valid_pruned_concept_column(column: str):
         elements = column.split('_')
         return len(elements) >= 2 and elements[0] in ['normal', 'beam', 'constrained']
+
+class VerbalizedExtractionDataset(Dataset):
+    """
+    Dataset format used to store the verbalized extractions of each clinical note.
+
+    The column `column` corresponds to the column that contains the verbalized extractions. It should have the following format :
+    [decoding_strategy]_[domain]_verbalized
+
+    Optionally, the inference input columns can be provided in the dataset (needed to filter non valid generations). The inference
+    input columns should have the following format : [decoding_strategy]_[domain]_verbalizer_prompt
+    """
+    def __init__(self, columns: List[str], dataset_path: str = None, data: pd.DataFrame = None):
+        super().__init__(dataset_path=dataset_path, data=data)
+        self.columns = columns
+        self.verify()
+        self.infer()
+
+    def infer(self):
+        """
+        Infers the input columns, the inference input columns, the domains and the methodology
+
+        The input columns are the pruned columns with the _verbalizer_prompt suffix.
+        The inference input columns are the input columns with the _verbalizer_prompt suffix.
+        The domains are the middle elements of the column names.
+        The methodologies are the first elements of the column names.
+        """
+        self.pruned_columns = list(map(lambda x: '_'.join(x.split('_')[:-1]), self.columns))
+        self.inference_input_columns = list(map(lambda x: x + '_verbalizer_prompt', self.pruned_columns)) 
+        self.domains = list(map(lambda x: '_'.join(x.split('_')[1:-1]), self.columns))
+        self.methodologies = list(map(lambda x: x.split('_')[0], self.columns))
+
+    def verify(self):
+        for column in self.columns:
+            assert VerbalizedExtractionDataset.valid_verbalized_column(column), f'The column "{column}" is not a valid column. It should be of a valid VerbalizedExtractionDataset input column'
+
+    def result_columns(self):
+        return self.columns
+
+    def filter_non_valid_generations(self):
+        """
+        Filters the non valid generations in the dataset. A valid generation is a generation in the output column that is not NaN in the inference input column.
+        Having N/A in the inference input column means that there was no important information in the clinical note to generate a summary for a domain.
+
+        Args:
+            input_columns: The input columns to filter the non valid generations from
+            output_columns: The output columns to filter the non valid generations from
+        """
+        for inference_input_column in self.inference_input_columns:
+            assert inference_input_column in self.data.columns, f'The column "{inference_input_column}" is not present in the dataset. This column which corresponds\
+                to the input of the inference pipeline is needed to filter non valid generations'
+
+        for input_column, output_column in zip(self.inference_input_columns, self.columns):
+            mask = self.data[input_column].isna()
+            self.data.loc[mask, output_column] = None
+        return self.data
+
+    @staticmethod
+    def valid_verbalized_column(column: str):
+        elements = column.split('_')
+        return len(elements) >= 2 and elements[0] in ['normal', 'beam', 'constrained'] and elements[-1] == 'verbalized'
 
 class ComparisonExtractionDataset(ExtractionDataset):
     """

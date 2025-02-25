@@ -36,13 +36,6 @@ def main():
 
     pruned_dataset = PrunedConceptDataset(columns=columns, dataset_path=args.dataset)
     verbalized_dataset = verbalizer.verbalize_dataset(pruned_dataset)
-    # logger.info(f'Verbalizing dataset with {len(pruned_dataset)} rows and columns : {pruned_dataset.column_names}')
-
-    # for dcf_path in args.dcf_files:
-    #     dcf = DomainClassFrequency.load(dcf_path)
-    #     pruner = Pruner(dcf, snomed)
-    #     pruner.prune_dataset(dataset, args.input_column, args.alpha)
-    
     verbalized_dataset.to_csv(args.output_dataset, index=False)
 
 if __name__ == '__main__':

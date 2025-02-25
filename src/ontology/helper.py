@@ -2,7 +2,7 @@
 
 
 from typing import Dict, List
-from src.ontology.annotator import MedCatAnnotator
+from src.ontology.medcat_annotator import MedCatAnnotator
 from src.ontology.snomed import Snomed
 
 

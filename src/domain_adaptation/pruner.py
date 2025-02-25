@@ -69,4 +69,4 @@ class Pruner:
         output_column = f'{input_column}_{self.domain_formatted}'
         logger.info(f'Pruning the dataset with column {input_column} and output column {output_column}')
         dataset.data[output_column] = dataset.data[input_column].apply(lambda x: self.prune(x, alpha=alpha))
-        return PrunedConceptDataset(column=output_column, data=dataset.data)
+        return PrunedConceptDataset(columns=[output_column], data=dataset.data)
