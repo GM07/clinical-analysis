@@ -1,9 +1,10 @@
-
-
-
+import sys
 from typing import List
 from tqdm import tqdm
-from vllm import LLM, SamplingParams
+
+if 'vllm' in sys.modules:
+    from vllm import LLM, SamplingParams
+
 from src.data.dataset import DatasetPartition
 from datasets import Dataset as HuggingFaceDataset
 import logging
@@ -50,32 +51,51 @@ class HuggingFaceDatasetInferencePipeline(InferencePipeline):
         input_column: str = 'input', 
         output_column: str = 'output',
     ):
+        """
+        Args:
+            model_path: Path to the model
+            input_column: Column to use for the input by default for all datasets (default: 'input')
+            output_column: Column to use for the output by default for all datasets (default: 'output')
+        """
         super().__init__(model_path)
         self.input_column = input_column
         self.output_column = output_column
 
-    def __call__(self, dataset: HuggingFaceDataset, max_new_tokens: int = 128, apply_chat_template: bool = True):
+    def __call__(self, dataset: HuggingFaceDataset, max_new_tokens: int = 128, apply_chat_template: bool = True, input_column: list[str] = None, output_column: str = None):
         """
         Executes the pipeline on the partition
 
         Args:
             partition: Partition onto which the pipeline will be ran
             batch_size: Batch size during inference
+            input_column: Column to use for the input (default: 'input')
+            output_column: Column to use for the output (default: 'output')
+            apply_chat_template: Whether to apply the chat template to the input
         """
         results = []
+        input_column = input_column if input_column is not None else self.input_column
+
+        assert input_column in dataset.column_names, f'The input column "{input_column}" is not in the dataset'
 
         if apply_chat_template:
             def apply_chat_template_for_row(data):
-                return {f'{self.input_column}_template': self.apply_chat_template(data[self.input_column])}
+                inputs = data[input_column]
+
+                if isinstance(inputs[0], str):
+                    inputs = list(map(lambda x: [{'role': 'user', 'content': x}], inputs))
+
+                return {f'{input_column}_template': self.apply_chat_template(inputs)}
             dataset = dataset.map(apply_chat_template_for_row, batched=True)
-            inputs = dataset[self.input_column + '_template']
+            inputs = dataset[input_column + '_template']
         else:
-            inputs = dataset[self.input_column]
+            inputs = dataset[input_column]
 
         output = self.run_inference(inputs, max_new_tokens=max_new_tokens)
         results.extend(output)
 
-        dataset = dataset.add_column(self.output_column, results)
+        output_column = output_column if output_column is not None else self.output_column
+        dataset = dataset.add_column(output_column, results)
+        dataset = dataset.remove_columns(f'{input_column}_template')
 
         return dataset
 

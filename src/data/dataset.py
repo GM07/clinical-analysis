@@ -20,14 +20,22 @@ class Dataset:
     This is only a pre-processing and post-processing class. It should not be used during inference
     """
 
-    def __init__(self, dataset_path: str):
+    def __init__(self, dataset_path: str = None, data: pd.DataFrame = None):
         """
         Args:
             dataset_path: Path to dataset. For now, only csv files are supported
         """
+
+        assert data is not None or dataset_path is not None, 'One of the arguments `dataset_path` or `data` must be provided'
+        assert data is None or dataset_path is None, 'Only one of the arguments `dataset_path` or `data` must be provided'
+
         self.dataset_path = dataset_path
+
+        if dataset_path is not None:
+            self.load()
+        else:
+            self.data = data
     
-        self.load()
 
     def load(self):
         """
@@ -39,7 +47,12 @@ class Dataset:
         # self.data = load_dataset('csv', data_dir=self.dataset_folder_path, data_files={'data': self.dataset_name})['data']
         self.data = pd.read_csv(self.dataset_path)
 
-    def partition(self, output_folder_path: str, nb_partitions: int = None, size_of_partition: int = None, max_rows: int = None, overwrite: bool = False):
+    def save(self, output_path: str = None):
+        if output_path is None:
+            output_path = self.dataset_path
+        self.data.to_csv(output_path, index=False)
+
+    def partition(self, output_folder_path: str, nb_partitions: int = None, size_of_partition: int = None, max_rows: int = None, overwrite: bool = False, original_dataset_path: str = None):
         """
         Partitions a dataset into multiple partitions (or shards) that can be used by different jobs.
 
@@ -49,9 +62,13 @@ class Dataset:
             size_of_partition: Size of a single partition. If provided, will overide `nb_partitions`
             max_rows: Number of rows to consider when generating the partitions
             overwrite: Whether to overwrite a partition if a partition is already present
+            original_dataset_path: Path to the original dataset. Needed if the dataset is not loaded from a file
         """
         assert nb_partitions is None or size_of_partition is None, f"One of the arguments `nb_partitions` or `size_of_partition` must be null"
         assert nb_partitions is not None or size_of_partition is not None, f"One of the arguments `nb_partitions` or `size_of_partition` must be provided"
+
+        assert original_dataset_path is not None or self.dataset_path is not None, 'The original dataset path must be provided'
+        dataset_path = original_dataset_path if original_dataset_path is not None else self.dataset_path
 
         # Partition handling
         if size_of_partition is not None:
@@ -72,7 +89,7 @@ class Dataset:
             start = i * size_of_partition
             end = min(len(self.data), (i + 1) * size_of_partition)
 
-            partition = DatasetPartition(self.dataset_path, start, end, saving_path=output_folder_path + f'partition_{start}_{end}.partition')
+            partition = DatasetPartition(dataset_path, start, end, saving_path=output_folder_path + f'partition_{start}_{end}.partition')
             partition.save(overwrite=overwrite)
 
             current_rows_processed += end - start
@@ -421,8 +438,152 @@ class MimicDataset(Dataset):
         assert index < len(self.data)
         return self.data[self.CLINICAL_NOTE_COLUMN].iloc[index] if text_only else self.data.iloc[index]
 
-
 class ExtractionDataset(Dataset):
+    """
+    Dataset format used to store the extractions of each clinical note.
+
+    The dataset should have at least the column 'TEXT' and one of the following columns : 'normal', 'beam' or 'constrained'.
+
+    The column `column` corresponds to the column that contains the extractions. An extraction dataset column always contains dictionaries
+    """
+    CLINICAL_NOTE_COLUMN = 'TEXT'
+    CLINICAL_NOTE_ID_COLUMN = 'ROW_ID'
+
+    def __init__(self, column: str, dataset_path: str = None, data: pd.DataFrame = None):
+        super().__init__(dataset_path=dataset_path, data=data)
+
+        self.column = column
+        self.verify()
+        self.prepare()
+
+    def verify(self):
+        """Verifies that the data loaded is conform to the extraction dataset template"""
+        error = f'The dataset is not a valid extraction dataset, missing the column : '
+        assert 'TEXT' in self.data.columns, error + 'TEXT'
+        assert 'normal' in self.data.columns or 'beam' in self.data.columns or 'constrained' in self.data.columns, error + 'normal, beam or constrained'
+        assert self.column in ['normal', 'beam', 'constrained'], f'The column "{self.column}" is not a valid column. Here are the valid columns : normal, beam, constrained'
+
+    def result_columns(self,):
+        return [self.column]
+
+    def prepare(self):
+
+        for column in self.result_columns():
+            self.data[column] = self._get_extractions(column)
+
+    def _get_extractions(self, column):
+        """
+        Returns the extractions of a column converted to a dictionary
+        Args:
+            column: Column containing the extractions
+        """
+        extractions = []
+        for extract in self.data[column]:
+            if isinstance(extract, dict):
+                extractions.append(extract)
+                continue
+            try:
+                extraction = ast.literal_eval(extract)
+                if isinstance(extraction, list):
+                    extraction = extraction[0]
+            except Exception as e:
+                extraction = {}
+            extractions.append(extraction)
+        return extractions
+
+
+    def clinical_notes(self):
+        return self.data['TEXT'].tolist()
+
+    def clinical_note_column(self):
+        return self.CLINICAL_NOTE_COLUMN
+
+    def clinical_note_id_column(self):
+        return self.CLINICAL_NOTE_ID_COLUMN
+
+class PrunedConceptDataset(ExtractionDataset):
+    """
+    Dataset format used to store the pruned concepts of each clinical note.
+
+    The column `column` corresponds to the column that contains the pruned extractions.
+    """
+    def __init__(self, columns: List[str], dataset_path: str = None, data: pd.DataFrame = None):
+        self.columns = columns
+        super().__init__(column=columns[0], dataset_path=dataset_path, data=data)
+
+    def verify(self):
+        for column in self.columns:
+            assert PrunedConceptDataset.valid_pruned_concept_column(column), f'The column "{column}" is not a valid column. It should be of a valid PrunedConceptDataset input column'
+
+    def result_columns(self):
+        return self.columns
+
+    @staticmethod
+    def valid_pruned_concept_column(column: str):
+        elements = column.split('_')
+        return len(elements) >= 2 and elements[0] in ['normal', 'beam', 'constrained']
+
+class VerbalizedExtractionDataset(Dataset):
+    """
+    Dataset format used to store the verbalized extractions of each clinical note.
+
+    The column `column` corresponds to the column that contains the verbalized extractions. It should have the following format :
+    [decoding_strategy]_[domain]_verbalized
+
+    Optionally, the inference input columns can be provided in the dataset (needed to filter non valid generations). The inference
+    input columns should have the following format : [decoding_strategy]_[domain]_verbalizer_prompt
+    """
+    def __init__(self, columns: List[str], dataset_path: str = None, data: pd.DataFrame = None):
+        super().__init__(dataset_path=dataset_path, data=data)
+        self.columns = columns
+        self.verify()
+        self.infer()
+
+    def infer(self):
+        """
+        Infers the input columns, the inference input columns, the domains and the methodology
+
+        The input columns are the pruned columns with the _verbalizer_prompt suffix.
+        The inference input columns are the input columns with the _verbalizer_prompt suffix.
+        The domains are the middle elements of the column names.
+        The methodologies are the first elements of the column names.
+        """
+        self.pruned_columns = list(map(lambda x: '_'.join(x.split('_')[:-1]), self.columns))
+        self.inference_input_columns = list(map(lambda x: x + '_verbalizer_prompt', self.pruned_columns)) 
+        self.domains = list(map(lambda x: '_'.join(x.split('_')[1:-1]), self.columns))
+        self.methodologies = list(map(lambda x: x.split('_')[0], self.columns))
+
+    def verify(self):
+        for column in self.columns:
+            assert VerbalizedExtractionDataset.valid_verbalized_column(column), f'The column "{column}" is not a valid column. It should be of a valid VerbalizedExtractionDataset input column'
+
+    def result_columns(self):
+        return self.columns
+
+    def filter_non_valid_generations(self):
+        """
+        Filters the non valid generations in the dataset. A valid generation is a generation in the output column that is not NaN in the inference input column.
+        Having N/A in the inference input column means that there was no important information in the clinical note to generate a summary for a domain.
+
+        Args:
+            input_columns: The input columns to filter the non valid generations from
+            output_columns: The output columns to filter the non valid generations from
+        """
+        for inference_input_column in self.inference_input_columns:
+            assert inference_input_column in self.data.columns, f'The column "{inference_input_column}" is not present in the dataset. This column which corresponds\
+                to the input of the inference pipeline is needed to filter non valid generations'
+
+        for input_column, output_column in zip(self.inference_input_columns, self.columns):
+            mask = self.data[input_column].isna()
+            self.data.loc[mask, output_column] = None
+        return self.data
+
+    @staticmethod
+    def valid_verbalized_column(column: str):
+        elements = column.split('_')
+        return len(elements) >= 2 and elements[0] in ['normal', 'beam', 'constrained'] and elements[-1] == 'verbalized'
+
+class ComparisonExtractionDataset(ExtractionDataset):
     """
     Dataset format used to store the extractions of each clinical note.
 
@@ -430,54 +591,30 @@ class ExtractionDataset(Dataset):
     """
 
     RESULT_COLUMNS = ['normal', 'beam', 'constrained']
-    CLINICAL_NOTE_COLUMN = 'TEXT'
-    CLINICAL_NOTE_ID_COLUMN = 'ROW_ID'
 
-    def __init__(self, dataset_path: str):
-        super().__init__(dataset_path)
+    def __init__(self, dataset_path: str, data: pd.DataFrame = None):
+        super().__init__(column='normal', dataset_path=dataset_path, data=data)
 
         self.verify()
+        self.prepare()
+        self.column = 'normal'
 
     def verify(self):
         """Verifies that the data loaded is conform to the extraction dataset template"""
-        error = f'The dataset is not a valid extraction dataset, missing the column : '
+        error = f'The dataset is not a valid comparison extraction dataset, missing the column : '
         assert 'TEXT' in self.data.columns, error + 'TEXT'
         assert 'normal' in self.data.columns, error + 'normal'
         assert 'beam' in self.data.columns, error + 'beam'
         assert 'constrained' in self.data.columns, error + 'constrained'
 
-    def clinical_note_column(self):
-        return ExtractionDataset.CLINICAL_NOTE_COLUMN
-
-    def clinical_note_id_column(self):
-        return ExtractionDataset.CLINICAL_NOTE_ID_COLUMN
-
-    def results_columns(self):
-        return ExtractionDataset.RESULT_COLUMNS
-
-    def clinical_notes(self):
-        return self.data['TEXT'].tolist()
-
-    def __extractions__(self, column):
-        """
-        Returns the extractions of a column converted to a dictionary
-        Args:
-            column: Column containing the extractions
-        """
-        extractions = []
-        for normal in self.data[column]:
-            try:
-                extraction = ast.literal_eval(normal)[0]
-            except ValueError:
-                extraction = {}
-            extractions.append(extraction)
-        return extractions
+    def result_columns(self):
+        return ComparisonExtractionDataset.RESULT_COLUMNS
 
     def greedy_extractions(self):
-        return self.__extractions__('normal')
+        return self.data[self.RESULT_COLUMNS[0]]
     
     def beam_extractions(self):
-        return self.__extractions__('beam')
+        return self.data[self.RESULT_COLUMNS[1]]
     
     def constrained_extractions(self):
-        return self.__extractions__('constrained')
+        return self.data[self.RESULT_COLUMNS[2]]

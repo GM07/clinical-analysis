@@ -1,4 +1,6 @@
 import logging
+import os
+from typing import List
 import joblib
 import pandas as pd
 from collections import Counter, defaultdict
@@ -16,13 +18,22 @@ class DomainAnalyser:
     Processes the Mimic data and then generates the DCF of each domain
     """
 
-    def __init__(self, mimic_path: str, processed_mimic_path: str = None):
+    def __init__(self, mimic_path: str, processed_mimic_path: str = None, domains: List[str] = None):
+        """
+        Args:
+            mimic_path: The path to the Mimic data
+            processed_mimic_path: The path to the processed Mimic data
+            domains: The domains to process (if None, all detected domains are processed)
+        """
         self.mimic_path = mimic_path
         self.processed_mimic_path = processed_mimic_path
 
         self.load_mimic()
 
-        self.domains = self.data['CATEGORY'].unique()
+        if domains is None:
+            self.domains = self.data['CATEGORY'].unique()
+        else:
+            self.domains = domains
         self.domain_class_frequencies = {}
 
     def load_mimic(self):
@@ -104,17 +115,35 @@ class DomainAnalyser:
         """
         self.domain_class_frequencies[domain] = domain_class_frequency
 
-    def prune_concepts(self, limit: int = 1000):
+    def prune_concepts(self, concept_limit: int = 1000):
         """
         Prunes the concepts that are not in the top limit
+
+        Args:
+            concept_limit: The number of concepts to keep
         """
         for domain in self.domain_class_frequencies:
-            self.domain_class_frequencies[domain].prune_concepts(limit)
+            self.domain_class_frequencies[domain].prune_concepts(concept_limit)
 
         return self.domain_class_frequencies
 
-    def save(self, path: str):
-        joblib.dump(self, path)
+    def save(self, path: str, separate_files: bool = False):
+        """
+        Saves the domain class frequencies
+
+        Args:
+            path: The path to save the domain class frequencies
+            separate_files: Whether to save the domain class frequencies in separate files (if true, the path will be a 
+            folder and each domain will have its own file under the domain name)
+        """
+        if separate_files:
+            if not os.path.exists(path):
+                os.mkdir(path)
+            for domain in self.domain_class_frequencies:
+                file_name = domain.replace(' ', '_').replace('/', '_').lower()
+                self.domain_class_frequencies[domain].save(path + f'/{file_name}.dcf')
+        else:
+            joblib.dump(self, path)
 
     @staticmethod
     def load(path: str):

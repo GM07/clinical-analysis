@@ -15,11 +15,11 @@ class EvaluatorTrainer:
     def __init__(self, model_checkpoint: str, dataset_dict_path: str, label2id: dict = None, id2label: dict = None, local: bool = False):
         """
         Args:
-            model_checkpoint (str): The path to the model checkpoint.
-            dataset_dict_path (str): The path to the dataset dictionary saved on disk by the prepare_dataset method.
-            label2id (dict): A dictionary mapping labels to their corresponding IDs. If not provided, the default mapping will be used (DEFAULT_LABEL2ID).
-            id2label (dict): A dictionary mapping IDs to their corresponding labels. If not provided, the default mapping will be used (DEFAULT_ID2LABEL).
-            local (bool): Whether to load the model locally or from the Huggingface Hub.
+            model_checkpoint: The path to the model checkpoint.
+            dataset_dict_path: The path to the dataset dictionary saved on disk by the prepare_dataset method.
+            label2id: A dictionary mapping labels to their corresponding IDs. If not provided, the default mapping will be used (DEFAULT_LABEL2ID).
+            id2label: A dictionary mapping IDs to their corresponding labels. If not provided, the default mapping will be used (DEFAULT_ID2LABEL).
+            local: Whether to load the model locally or from the Huggingface Hub.
         """
         self.model_checkpoint = model_checkpoint
         self.dataset_dict_path = dataset_dict_path
@@ -59,16 +59,25 @@ class EvaluatorTrainer:
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_checkpoint)
         self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
 
-    def train(self, output_dir: str = None, batch_size: int = 16, learning_rate: float = 2e-5, num_epochs: int = 1, weight_decay: float = 0.01):
+    def train(
+        self, 
+        output_dir: str = None, 
+        batch_size: int = 16, 
+        learning_rate: float = 2e-5, 
+        num_epochs: int = 3, 
+        weight_decay: float = 0.01, 
+        resume_from_checkpoint: bool = None
+    ):
         """
         Trains the model on the dataset.
 
         Args:
-            output_dir (str): The path to save the model.
-            batch_size (int): The batch size.
-            learning_rate (float): The learning rate.
-            num_epochs (int): The number of epochs.
-            weight_decay (float): The weight decay.
+            output_dir: The path to save the model.
+            batch_size: The batch size.
+            learning_rate: The learning rate.
+            num_epochs: The number of epochs.
+            weight_decay: The weight decay.
+            resume_from_checkpoint: If True, resume from checkpoint. Leave None to train from scratch.
         """
         if output_dir is None:
             training_args = TrainingArguments(
@@ -78,8 +87,10 @@ class EvaluatorTrainer:
                 per_device_eval_batch_size=batch_size,
                 num_train_epochs=num_epochs,
                 weight_decay=weight_decay,
-                eval_strategy="epoch",
-                save_strategy="epoch",
+                eval_strategy="steps",
+                save_strategy="steps",
+                eval_steps=1000,
+                save_steps=1000
             )
         
         trainer = Trainer(
@@ -92,7 +103,10 @@ class EvaluatorTrainer:
             compute_metrics=self.evaluate
         )
 
-        trainer.train()
+        if resume_from_checkpoint is not None:
+            trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+        else:
+            trainer.train()
 
     def evaluate(self, eval_pred):
         predictions, references = eval_pred
