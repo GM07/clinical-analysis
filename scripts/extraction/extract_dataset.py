@@ -3,6 +3,7 @@ import logging
 
 from src.data.dataset import Dataset, DatasetPartition
 from src.pipelines.extraction_pipeline import DatasetExtractionPipeline
+from datasets import Dataset as HuggingFaceDataset
 
 from datasets import Dataset as HuggingFaceDataset
 

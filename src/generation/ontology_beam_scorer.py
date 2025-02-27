@@ -33,7 +33,7 @@ class GenerationConfig:
 
     max_length: int = 2048
     max_new_tokens: int = 128
-    use_beam_search: bool = False
+    use_group_beam_search: bool = False
     normal_beam_search: bool = False
     nb_beams: int = 10
     nb_beam_groups: int = 2
@@ -67,7 +67,7 @@ class GenerationConfig:
         Returns an instance of this class leading to diverse beam search
         """
         instance = cls()
-        instance.use_beam_search = True
+        instance.use_group_beam_search = True
         instance.normal_beam_search = True
         return instance
 
@@ -77,7 +77,7 @@ class GenerationConfig:
         Returns an instance of this class leading to ontology-based beam search
         """
         instance = cls()
-        instance.use_beam_search = True
+        instance.use_group_beam_search = True
         instance.score_boost_factors = [3.0, 1.0, 10.0]
         return instance
 
@@ -140,8 +140,6 @@ class OntologyBeamScorer(BeamSearchScorer):
         self.config = config
         self.nb_tokens_generated = self.config.generation_config.window_size // 2
 
-        self.time_to_next_process = -1
-        self.nb_times_process_called = 0
         self.rouge_scorer = rouge_scorer.RougeScorer(['rouge2'], use_stemmer=True)
 
 
@@ -331,17 +329,11 @@ class OntologyBeamScorer(BeamSearchScorer):
         """
         @see `BeamSearchScorer.process`
         """
-        if self.time_to_next_process < 0:
-            self.time_to_next_process = time.time()
-        else:
-            self.time_to_next_process = time.time()
-        
         results = super().process(input_ids, next_scores, next_tokens, next_indices, pad_token_id, eos_token_id, beam_indices, group_index, decoder_prompt_len)
 
         if self.config.generation_config.normal_beam_search:
             return results
 
-        self.nb_times_process_called += 1
         modifying_scores: bool = self.nb_tokens_generated >= self.config.generation_config.window_size
         if modifying_scores:
             old_beam_scores = results['next_beam_scores']
