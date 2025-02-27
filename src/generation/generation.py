@@ -1,12 +1,14 @@
 from typing import Dict, List
 from collections import Counter, defaultdict
 import logging
+import types
 
 from tqdm import tqdm
 
 import torch
-from transformers import LogitsProcessorList, StoppingCriteriaList, MaxLengthCriteria
 from accelerate import Accelerator
+from transformers.generation.configuration_utils import GenerationConfig as HFGenerationConfig
+from transformers.generation.utils import GenerationMixin
 
 from src.domain_adaptation.domain_class_frequency import DomainClassFrequency
 from src.generation.ontology_beam_scorer import OntologyBeamScorer, OntologyBeamScorerConfig, GenerationInput, GenerationConfig
@@ -14,15 +16,12 @@ from src.generation.chat_template import ChatTemplate
 from src.ontology.annotator import Annotator
 from src.ontology.snomed import Snomed
 from src.generation.templates import BASE_PROMPT_TEMPLATE
+from src.generation.custom_generation import custom_generate
 
 logger = logging.getLogger(__name__)
 
 class OntologyConstrainedModel:
-    """
-    Model constrained by ontology during decoding process. Can't be used for inference
-    normally without constrained decoding process
-    """
-    
+
     def __init__(
         self, 
         model, 
@@ -42,6 +41,8 @@ class OntologyConstrainedModel:
         self.accelerator = accelerator
         self.apply_chat_template = apply_chat_template
 
+        self.model.eval()
+
     def get_device(self):
         """
         Returns the accurate device based on whether an accelerator object was provided in the constructor. If it was
@@ -49,16 +50,18 @@ class OntologyConstrainedModel:
         """
         return self.model.device if self.accelerator is None else self.accelerator.device
 
-    def verify_prompt_length(self, prompt):
+    def normal_generate(self):
         """
-        Verifies that the length of a prompt is not longer than `self.max_length`
+        Sets the `generate` method of the model to the default one
+        """
+        self.model.generate = types.MethodType(GenerationMixin.generate, self.model)
 
-        Args:
-            prompt: Prompt to verify the length of
+    def modified_generate(self):
         """
-        length = len(self.tokenizer.tokenize(prompt))
-        if length > self.max_length:
-            logger.warning(f'Prompt longer than `self.max_length` ({self.max_length}) detected : {prompt[:100]}...')
+        Sets the `generate` method of the model to the modified one (allowing to input a beam search scorer)
+        """
+        self.model.generate = types.MethodType(custom_generate, self.model)
+
 
     def prepare_model_inputs(self, prompts: List[str]):
         """
@@ -70,8 +73,6 @@ class OntologyConstrainedModel:
         if self.apply_chat_template and self.tokenizer.chat_template is not None:
             prompts = self.chat_template.batched_single_user_entry(prompts)
         
-        logger.debug(prompts)
-
         model_input = self.tokenizer(
             prompts, 
             padding=True, 
@@ -82,16 +83,6 @@ class OntologyConstrainedModel:
         )
         return model_input
 
-    def prepare_input_for_beam_search(self, tensor: torch.Tensor, nb_beams: int, device) -> torch.Tensor:
-        """
-        Prepares the input for beam search by repeating and interleaving prompts `nb_beams` times.
-
-        Args:
-            tensor: List of inputs to send to the model
-            nb_beams: Number of beams to be used
-        """
-        return torch.repeat_interleave(tensor, nb_beams, dim=0).to(device)
-    
     def get_final_generation(self, prompts_input_ids: torch.Tensor, generated_answer) -> List[str]:
         """
         Formats the generations of a model by only returning the newly generated tokens and decoding them with the tokenizer
@@ -107,6 +98,7 @@ class OntologyConstrainedModel:
         results = self.tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
         return results
 
+
     def greedy_search(self, generation_input: GenerationInput) -> List[str]:
         """
         Sends the `generation_input` to the model using greedy search decoding
@@ -118,14 +110,21 @@ class OntologyConstrainedModel:
         if len(generation_input.prompts[0]) == 0:
             logger.warning(f'The prompts sent to the model are empty')
         
-        model_input = self.prepare_model_inputs(generation_input.prompts).to(self.get_device())
-        self.model.eval()
+        model_input = self.prepare_model_inputs(generation_input.prompts)
+        self.normal_generate()
+
+        hf_generation_config = HFGenerationConfig(
+                temperature=0,
+                top_p=1,
+                top_k=-1,
+                seed=42
+        )
 
         with torch.no_grad():
             generated = self.model.generate(
                 **model_input, 
                 max_new_tokens=128,
-                temperature=None,
+                generation_config=hf_generation_config,
                 pad_token_id=self.tokenizer.pad_token_id,
             )
 
@@ -133,104 +132,72 @@ class OntologyConstrainedModel:
             del model_input
             return final_answers
     
-    def beam_search(self, generation_input: GenerationInput, generation_config: GenerationConfig = GenerationConfig()):
-        """
-        Sends the `generation_input` to the model using beam search decoding
 
-        Args:
-            generation_input: Object containing the prompts to send to the model
-            generation_config: Configuration object guiding the generation
-        """
+    def group_beam_search(self, generation_input: GenerationInput, generation_config: GenerationConfig = GenerationConfig()):
 
-        # TODO : Implement batched note answering
-        # Right now, questions can be batched, but only according to a single clinical note
-
-        batch_size = len(generation_input.prompts)
-
-        ontology_beam_scorer = OntologyBeamScorer(
-            config=OntologyBeamScorerConfig(
-                tokenizer=self.tokenizer,
-                annotator=self.annotator,
-                snomed=self.snomed,
-                generation_input=generation_input,
-                generation_config=generation_config
-            ),
-            batch_size=batch_size,
-            device=self.get_device(),
+        tokenized_inputs = self.prepare_model_inputs(generation_input.prompts)
+        input_ids = tokenized_inputs['input_ids']
+        attention_mask = tokenized_inputs['attention_mask']
+        hf_generation_config = HFGenerationConfig(
+                temperature=0,
+                top_p=1,
+                top_k=-1,
+                num_beams=generation_config.nb_beams,  # Number of beams for beam search
+                num_return_sequences=1,  # Return all beams
+                num_beam_groups=generation_config.nb_beam_groups,
+                diversity_penalty=generation_config.diversity_penalty,
+                seed=42
         )
+        # generate_params = {
+        #         "input_ids": input_ids,
+        #         "generation_config": hf_generation_config,
+        #         "return_dict_in_generate": True,
+        #         "output_scores": True,
+        #         "max_new_tokens": 128,
+        # }
 
-        prompts_tokenized = self.prepare_model_inputs(generation_input.prompts)        
-
-        prompts_tokenized['input_ids'] = self.prepare_input_for_beam_search(
-            prompts_tokenized['input_ids'], 
-            device=self.get_device(),
-            nb_beams=generation_config.nb_beams
-        )
-
-        prompts_tokenized['attention_mask'] = self.prepare_input_for_beam_search(
-            prompts_tokenized['attention_mask'], 
-            device=self.get_device(),
-            nb_beams=generation_config.nb_beams
-        )
-        
-        self.model.eval()
         with torch.no_grad():
-            max_length = prompts_tokenized['input_ids'].shape[-1] + generation_config.max_new_tokens
-
-            config_dict = {
-                'num_beams': generation_config.nb_beams,
-                'num_beam_groups': generation_config.nb_beam_groups,
-                'do_sample': False,
-                'diversity_penalty': generation_config.diversity_penalty,
-                'num_return_sequences': 1,
-                'use_cache': False, # TODO : Change when transformers bug is fixed
-                'max_length': max_length,
-                'eos_token_id': self.tokenizer.eos_token_id,
-                'bos_token_id': self.tokenizer.bos_token_id,
-                'pad_token_id': self.tokenizer.pad_token_id
-            }
-            hf_gen_config, model_kwargs = self.model._prepare_generation_config(None, **config_dict)
-            kwargs_has_attention_mask = model_kwargs.get("attention_mask", None) is not None
-            self.model._prepare_special_tokens(hf_gen_config, kwargs_has_attention_mask, device=self.model.device)
-            # print(hf_gen_config.__dir__())
-            logits_processor = LogitsProcessorList([])
-            logits_warper = self.model._get_logits_processor(
-                generation_config=hf_gen_config,
-                input_ids_seq_length=prompts_tokenized['input_ids'].shape[-1],
-                encoder_input_ids=prompts_tokenized['input_ids'],
-                prefix_allowed_tokens_fn=None,
-                logits_processor=[],
-            )
-
-            generations = self.model._group_beam_search(
-                **prompts_tokenized,
-                beam_scorer=ontology_beam_scorer,
-                logits_warper=logits_warper,
-                logits_processor=logits_processor,
-                stopping_criteria=StoppingCriteriaList([
-                    MaxLengthCriteria(max_length=max_length),
-                ]),
-                pad_token_id=self.tokenizer.pad_token_id,
-                generation_config=hf_gen_config,
-                synced_gpus=False,
-                use_cache=False
-            )
-            final_answers = self.get_final_generation(prompts_tokenized['input_ids'], generations)
-
-            del prompts_tokenized
+            if generation_config.normal_beam_search:
+                self.normal_generate()
+                generation_output = self.model.generate(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    generation_config=hf_generation_config,
+                    max_new_tokens=generation_config.max_new_tokens
+                )
+            else:
+                self.modified_generate()
+                ontology_beam_scorer = OntologyBeamScorer(
+                    config=OntologyBeamScorerConfig(
+                        tokenizer=self.tokenizer,
+                        annotator=self.annotator,
+                        snomed=self.snomed,
+                        generation_input=generation_input,
+                        generation_config=generation_config
+                    ),
+                    batch_size=len(generation_input.prompts),
+                
+                )
+                generation_output = self.model.generate(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    generation_config=hf_generation_config,
+                    max_new_tokens=generation_config.max_new_tokens,
+                    beam_scorer=ontology_beam_scorer
+                )
+            generated_tokens = generation_output
+            final_answers = self.get_final_generation(tokenized_inputs['input_ids'], generated_tokens)
             return final_answers
 
     def generate(self, generation_input: GenerationInput, generation_config: GenerationConfig = GenerationConfig()):
-        """
-        Generates tokens based on a set of inputs
 
-        Args:
-            generation_input: Object containing the inputs to send to the model
-            generation_config: Configuration object guiding the generation
-        """
-        if not generation_config.use_beam_search:
+        if generation_config.use_group_beam_search:
+            return self.group_beam_search(generation_input, generation_config)
+        else:
             return self.greedy_search(generation_input)
-        return self.beam_search(generation_input, generation_config=generation_config)
+
+
+
 
 class OntologyPromptTemplate:
 

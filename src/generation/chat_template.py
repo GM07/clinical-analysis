@@ -51,11 +51,16 @@ class ChatTemplate:
             {'role': 'user', 'content': entry}
         ])
     
-    def batched_single_user_entry(self, entries: List[str]):
+    def batched_single_user_entry(self, entries: List[str], system_entry: str = DEFAULT_SYSTEM_ENTRY):
         """
         Returns a chat conversation with a single user entry and the generation prompt added for each entry in the batch
         """
-        return list(map(self.single_user_entry, entries))
+        chats = [[
+            {"role": "system", "content": system_entry},
+            {'role': 'user', 'content': entry}
+        ] for entry in entries]
+
+        return self.apply(chats)
 
     def add_user_entry(self, entry: str, add_generation_prompt=True):
         """
@@ -93,7 +98,7 @@ class ChatTemplate:
         to generate the conversation
 
         Args:
-            messages: List of messages in the format {'role': role, 'content': content}
+            messages: List of messages in the format {'role': role, 'content': content} of List of List of messages (if batched)
             add_generation_prompt: Whether to add the token indicating that it is the model's turn to generate
         """
         if messages is None:

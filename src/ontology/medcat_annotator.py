@@ -27,6 +27,7 @@ class MedCatAnnotator(Annotator):
             config = meta_cat_config_dict
 
         self.cat = CAT.load_model_pack(medcat_path, meta_cat_config_dict=config)
+        self.cat._meta_cats[0].model.to(device)
         
     def process_entities(self, entities):
         results = []

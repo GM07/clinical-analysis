@@ -3,9 +3,7 @@ import logging
 from typing import Dict, List
 
 from tqdm import tqdm
-from vllm import LLM
 from datasets import Dataset as HuggingFaceDataset
-
 
 from src.data.dataset import DatasetPartition
 from src.generation.generation import OntologyBasedPrompter, OntologyConstrainedModel
@@ -69,6 +67,7 @@ class ExtractionPipeline(Pipeline):
         self.model, self.tokenizer = ModelRegistry.load_single_checkpoint(self.checkpoint_path, loading_config=self.loading_config)
         self.snomed = Snomed(self.snomed_path, self.snomed_cache_path, nb_classes=366771)
         self.medcat = MedCatAnnotator(self.medcat_path, device=self.medcat_device)
+ 
         self.ontology_constrained_model = OntologyConstrainedModel(
             model=self.model,
             tokenizer=self.tokenizer,
@@ -76,7 +75,7 @@ class ExtractionPipeline(Pipeline):
             annotator=self.medcat,
             apply_chat_template=True
         )
- 
+        
 class DatasetExtractionPipeline(ExtractionPipeline):
     """
     Differs with the `PartitionedExtractionPipeline` in that it will store the prompts in a dataset instead of 
@@ -263,8 +262,8 @@ class DatasetComparisonExtractionPipeline(ExtractionPipeline):
                 generation_config=constrained_config
             )
 
-            self.results = (normal_attr_by_id, beam_attr_by_id, constrained_attr_by_id)
-            results.append(constrained_attr_by_id)
+            result = (normal_attr_by_id, beam_attr_by_id, constrained_attr_by_id)
+            results.append(result)
 
         dataset = dataset.add_column('OUTPUT', results)
 
@@ -338,8 +337,8 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
             generation_config=constrained_config
         )
 
-        self.results = (normal_attr_by_id, beam_attr_by_id, constrained_attr_by_id)
-        return self.results
+        results = (normal_attr_by_id, beam_attr_by_id, constrained_attr_by_id)
+        return results
 
 class PartitionedComparisonExtractionPipeline(ExtractionPipeline):
     """
