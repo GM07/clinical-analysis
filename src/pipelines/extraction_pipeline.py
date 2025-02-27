@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import logging
 from typing import Dict, List
+import sys
 
 from tqdm import tqdm
 from vllm import LLM
