@@ -111,6 +111,9 @@ class OntologyConstrainedModel:
             logger.warning(f'The prompts sent to the model are empty')
         
         model_input = self.prepare_model_inputs(generation_input.prompts)
+        model_input['input_ids'] = model_input['input_ids'].to(self.get_device())
+        model_input['attention_mask'] = model_input['attention_mask'].to(self.get_device())
+
         self.normal_generate()
 
         hf_generation_config = HFGenerationConfig(
@@ -136,8 +139,8 @@ class OntologyConstrainedModel:
     def group_beam_search(self, generation_input: GenerationInput, generation_config: GenerationConfig = GenerationConfig()):
 
         tokenized_inputs = self.prepare_model_inputs(generation_input.prompts)
-        input_ids = tokenized_inputs['input_ids']
-        attention_mask = tokenized_inputs['attention_mask']
+        input_ids = tokenized_inputs['input_ids'].to(self.get_device())
+        attention_mask = tokenized_inputs['attention_mask'].to(self.get_device())
         hf_generation_config = HFGenerationConfig(
                 temperature=0,
                 top_p=1,
@@ -176,7 +179,7 @@ class OntologyConstrainedModel:
                         generation_config=generation_config
                     ),
                     batch_size=len(generation_input.prompts),
-                
+                    device=self.get_device()
                 )
                 generation_output = self.model.generate(
                     input_ids=input_ids,
@@ -238,74 +241,10 @@ class OntologyBasedPrompter:
         self.dataset_mode = dataset_mode
 
         
-        self.attributes = []
         self.attributes_by_id = []
 
         self.exclude_ids = set(['362981000', '444677008', '419891008', '276339004', '106237007'])
         self.current_note_id = 0
-
-    def get_ancestors_adjusted_frequencies(self, frequencies: Dict[str, float]):
-        """
-        Adjusts frequencies to favor more general concepts first (generic term will probably
-        have less ancestors). Modifies the score according to the following formula :
-        new_score = 0.75 * old_score - nb_ancestors * 0.25
-        """
-        adjusted_frequencies = dict()
-        for elem in frequencies.items():
-            id, count = elem
-
-            if not self.snomed.is_id_valid(id) or id in self.exclude_ids:
-                continue
-            else:
-                # We want to favor more general concepts first 
-                # A generic term will probably have less ancestors
-                ancestors = self.snomed.get_ancestors_of_id(id, return_list=True)
-                nb_ancestors = max(1, len(ancestors))
-                new_score = (0.75 * count - nb_ancestors * 0.25)
-                adjusted_frequencies[id] = new_score
-        return adjusted_frequencies
-
-    def get_all_ancestors_of_ids(self, ids: List[str]):
-        """
-        Returns a list containing all ancestors of all ids. If a concept is the ancestor
-        of multiple ids, it will be present multiple times in the class.
-
-        Args:
-            ids: List of SNOMED ids
-
-        Returns:
-        All ancestors of all ids in a list (same id can be present multiple times)
-        """
-        
-        all_ids = []
-        for snomed_id in ids:
-            ancs = self.snomed.get_ancestors_of_id(snomed_id, return_list=True)
-            ancestor_included = all(map(lambda x: x not in self.exclude_ids, ancs))
-            to_add = len(ancs) > 0 and ancestor_included
-            if to_add:
-                all_ids.append(ancs[0])
-                all_ids.append(snomed_id)
-        return all_ids
-    
-    def get_most_frequent_concepts(self, clinical_note, top_n):
-        """
-        Returns the `top_n` most frequent concepts present in the clinical note. It will
-        tag the clinical note and then compute all ancestors of these 
-        """
-        
-        concept_ids = self.annotator.annotate(clinical_note, return_ids_only=True) 
-        all_ids = self.get_all_ancestors_of_ids(concept_ids)
-
-        frequencies = Counter(all_ids)
-        frequencies.pop(Snomed.BASE_CLASS_ID, 0)
-        
-        frequencies = self.get_ancestors_adjusted_frequencies(frequencies)
-
-        if top_n == -1:
-            top_n = len(frequencies)
-        
-        most_common_concepts = Counter(frequencies).most_common(top_n)
-        return list(map(lambda x: x[0], most_common_concepts))
     
     def start_multiple(self, clinical_notes: List[str], top_n=5, batch_size=1, generation_config: GenerationConfig = GenerationConfig(), ids: List[str] = None):
         """
@@ -326,20 +265,27 @@ class OntologyBasedPrompter:
         if self.dataset_mode:
             return self.start_dataset(clinical_notes, ids, top_n=top_n)
         
-        self.attributes = []
+        # self.attributes = []
         self.attributes_by_id = []
 
         for i, note in enumerate(clinical_notes):
             self.current_note_id = i
             self.attributes_by_id.append({})
-            self.attributes.append({})
             self.start(note, top_n=top_n, batch_size=batch_size, generation_config=generation_config)
 
-            return self.attributes_by_id.copy(), self.attributes.copy()
+            return self.attributes_by_id.copy()
     
     def start_dataset(self, clinical_notes: List[str], ids: List[str], top_n: int = 5):
         """
         Starts the extraction on a dataset
+
+        Args:
+            clinical_notes: Clinical notes used to extract information from
+            ids: Ids indentifying each clinical note
+            top_n: Number maximal concepts to extract from each clinical note
+
+        Returns:
+        Dictionary where the keys are the ids and the values are the prompts
         """
 
         assert len(ids) == len(clinical_notes), 'The number of ids should be the same as the number of clinical notes'
@@ -348,7 +294,7 @@ class OntologyBasedPrompter:
         dataset = defaultdict(list)
 
         for id, clinical_note in tqdm(zip(ids, clinical_notes), total=len(ids)):
-            most_frequent_concepts, frequencies = DomainClassFrequency.get_most_frequent_concepts(
+            most_frequent_concepts, _ = DomainClassFrequency.get_most_frequent_concepts(
                 text=clinical_note, 
                 snomed=self.snomed, 
                 annotator=self.annotator, 
@@ -359,27 +305,20 @@ class OntologyBasedPrompter:
 
         return dataset
 
-    def start(
-        self, 
-        clinical_note: str, 
-        top_n: int = 5, 
-        batch_size: int = 1, 
-        generation_config: GenerationConfig = GenerationConfig()
-    ):
+    def start(self, clinical_note: str, top_n: int = 5, batch_size: int = 1, generation_config: GenerationConfig = GenerationConfig()):
         """
         Retrieves the most frequent concepts present in the clinical note and extracts them (or stores the prompt if `self.dataset_mode` is `True`)
 
         Args:
-            notes: Clinical note used to extract information from
+            clinical_note: Clinical note used to extract information from
             top_n: Number maximal concepts to extract from each clinical note
             batch_size: Number of concepts to process in parallel per clinical note (not used if `self.dataset_mode` is `True`)
             generation_config: Configuration guiding the model's generation (not used if `self.dataset_mode` is `True`)
         
         Returns:
-        Tuple of dictionaries where the first dictionary contains {concept_id: extraction} and the 
-        second dictionary contains {concept_label: extraction}
+        Dictionary containing {concept_id: extraction}
         """ 
-        most_frequent_concepts, frequencies = DomainClassFrequency.get_most_frequent_concepts(
+        most_frequent_concepts, _ = DomainClassFrequency.get_most_frequent_concepts(
             text=clinical_note, 
             snomed=self.snomed, 
             annotator=self.annotator, 
@@ -406,7 +345,7 @@ class OntologyBasedPrompter:
     ):
         """
         Performs extraction step on a clinical note based on certain concepts from the ontology. It 
-        then stores the extractions in `self.attributes_by_id` and `self.attributes`
+        then stores the extractions in `self.attributes_by_id`
 
         Args:
             clinical_note: Clinical note from which the information linked to concepts must be extracted
@@ -484,11 +423,11 @@ class OntologyBasedPrompter:
 
             valid_answer = 'N/A' not in answer.strip()
 
-            label = self.snomed.get_label_from_id(concept_id)
+            # label = self.snomed.get_label_from_id(concept_id)
 
             if len(answer.strip()) > 0 and valid_answer:
-                self.attributes[self.current_note_id][label] = answer
+                # self.attributes[self.current_note_id][label] = answer
                 self.attributes_by_id[self.current_note_id][concept_id] = answer
             else:
-                self.attributes[self.current_note_id][label] = 'N/A'
+                # self.attributes[self.current_note_id][label] = 'N/A'
                 self.attributes_by_id[self.current_note_id][concept_id] = 'N/A'
