@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 import logging
 
 from src.data.dataset import DatasetPartition
-from src.pipelines.dataset_inference_pipeline import DatasetPartitionInferencePipeline
+from src.pipelines.dataset_inference_pipeline import PartitionedInferencePipeline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,7 +25,7 @@ def main():
 
     print('Called with arguments : ', args)
 
-    pipeline = DatasetPartitionInferencePipeline(
+    pipeline = PartitionedInferencePipeline(
         model_path=args.checkpoint,
         input_column=args.input_column,
         chat_mode=args.chat_mode,

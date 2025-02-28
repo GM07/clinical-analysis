@@ -4,7 +4,7 @@ import logging
 from datasets import Dataset as HuggingFaceDataset
 
 from src.data.dataset import DatasetPartition
-from src.pipelines.dataset_inference_pipeline import HuggingFaceDatasetInferencePipeline
+from src.pipelines.dataset_inference_pipeline import HFDatasetInferencePipeline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,7 +26,7 @@ def main():
 
     print('Called with arguments : ', args)
 
-    pipeline = HuggingFaceDatasetInferencePipeline(
+    pipeline = HFDatasetInferencePipeline(
         model_path=args.checkpoint,
         input_column=args.input_column,
         output_column=args.output_column,

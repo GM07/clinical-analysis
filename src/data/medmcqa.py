@@ -106,24 +106,25 @@ class MedMCQA:
             correct = row['correct_answer']
             wrong = row['random_wrong_answer']
             explanation = row['explanation']
-
+            correct_question = f"""Question: {question}\nAnswer: {correct}"""
+            wrong_question = f"""Question: {question}\nAnswer: {wrong}"""
             correct_prompt = {
                 'role': 'user',
-                'content': f"""Question: {question}\nAnswer: {correct}"""
+                'content': correct_question
             }
 
             wrong_prompt = {
                 'role': 'user',
-                'content': f"""Question: {question}\nAnswer: {wrong}"""
+                'content': wrong_question
             }
 
             one_shot_correct = one_shot_conversation + [correct_prompt]
             one_shot_wrong = one_shot_conversation + [wrong_prompt]
 
-            prompts.append((id, one_shot_correct, question, correct, True, explanation))
-            prompts.append((id, one_shot_wrong, question, wrong, False, explanation))
+            prompts.append((id, one_shot_correct, question, correct, True, explanation, system_prompt, one_shot_question, one_shot_answer, correct_question))
+            prompts.append((id, one_shot_wrong, question, wrong, False, explanation, system_prompt, one_shot_question, one_shot_answer, wrong_question))
 
-        df = pd.DataFrame(prompts, columns=['id', 'prompt', 'question', 'answer', 'is_correct', 'explanation'])
+        df = pd.DataFrame(prompts, columns=['id', 'chat', 'question', 'answer', 'is_correct', 'explanation', 'system_prompt', 'one_shot_user_input', 'one_shot_assistant_output', 'user_input'])
 
         if output_path:
             df.to_csv(output_path, index=False)
