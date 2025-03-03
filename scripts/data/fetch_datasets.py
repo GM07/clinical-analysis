@@ -24,8 +24,11 @@ def main():
     
     # Fetch the datasets 
     for path in hf_paths:
+        logger.info(f"Fetching {path}")
         dataset = load_dataset(path, trust_remote_code=True, cache_dir='./cache/')
-        dataset.save_to_disk(os.path.join(args.out, path.split('/')[-1]))
+        save_path = os.path.join(args.out, path.split('/')[-1])
+        logger.info(f'Saving to {save_path}')
+        dataset.save_to_disk(save_path)
 
 if __name__ == '__main__':
     main()

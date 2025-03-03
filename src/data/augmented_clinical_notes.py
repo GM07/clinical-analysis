@@ -372,9 +372,9 @@ Summary : Summary of patient's discharge
 
 """
 
-class AGBonnet:
+class AugmentedClinicalNotes:
     """
-    Class to load and prepare the Agbonnet dataset.
+    Class to load and prepare the AugmentedClinicalNotes dataset.
 
     Important definitions:
     - Concept : A medical concept that can be extracted from a note (e.g. "symptoms", "treatments", "diagnosis tests", etc.)
@@ -493,7 +493,7 @@ class AGBonnet:
 
         return self.data
 
-    def generate_prompts(self, output_path: str):
+    def generate_prompts(self, output_path: str, max_rows: int = 25000):
         """
         Prepares the dataset by filtering invalid extraction summaries, extracting information from summaries, and scattering extractions.
 
@@ -501,6 +501,7 @@ class AGBonnet:
 
         Args:
             output_path (str): The path to save the prompts to
+            max_rows (int): The maximum number of rows to save in the output file
         """
         initial_len = len(self.data)
         self.filter_extraction_summaries()
@@ -523,6 +524,9 @@ class AGBonnet:
         initial_len = len(self.data)
         self.generate_negative_samples()
         logger.info(f"Generated negative samples : {initial_len} -> {len(self.data)}")
+
+        self.data = self.data.shuffle() # Make sure all extractions are not linked to the same notes
+        self.data = self.data.select(range(max_rows))
 
         self.save(output_path)
 
@@ -666,7 +670,14 @@ class AGBonnet:
         prompt = f"concept : {concept}\ncategory : {category}\nvalue : {value}\nconcept_reference : {concept_reference}"
         chat = self.one_shot_chats_per_concept[concept] + [{'role': 'user', 'content': prompt}]
 
-        return row | {'prompt': chat, 'factual': True}
+        return row | {
+            'chat': chat, 
+            'factual': True,
+            'system_prompt': chat[0]['content'],
+            'one_shot_user_input': chat[1]['content'],
+            'one_shot_assistant_output': chat[2]['content'],
+            'user_input': prompt,
+        }
 
     def _generate_negative_samples_from_row(self, row):
         """
@@ -681,7 +692,16 @@ class AGBonnet:
         chat = self.one_shot_chats_per_concept[concept] + [{'role': 'user', 'content': prompt}]
 
         positive_sample = row | {'corrupted_value': [None]}
-        negative_sample = row | {'prompt': [chat], 'factual': [False], 'corrupted_value': [sampled_value]}
+        negative_sample = row | {
+            'chat': [chat], 
+            'factual': [False], 
+            'corrupted_value': [sampled_value],
+            'system_prompt': [chat[0]['content']],
+            'one_shot_user_input': [chat[1]['content']],
+            'one_shot_assistant_output': [chat[2]['content']],
+            'user_input': [prompt],
+        }
+        
         dicts = [positive_sample, negative_sample]
         result = self._list_of_dicts_to_dict(dicts)
         return result
