@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 parser = ArgumentParser(description='Program that fetches the datasets needed to create the Medical Hallucination Dataset')
 parser.add_argument('--out', type=str, required=True, help='Output path where the datasets will be saved')
 
-hf_paths = ['openlifescienceai/medmcqa', 'AGBonnet/augmented-clinical-notes', 'starmpcc/Asclepius-Synthetic-Clinical-Notes']
+hf_paths = ['openlifescienceai/medmcqa', 'AGBonnet/augmented-clinical-notes', 'starmpcc/Asclepius-Synthetic-Clinical-Notes', 'Blaise-g/SumPubmed']
 
 def main():
     args = parser.parse_args()
@@ -25,8 +25,11 @@ def main():
     # Fetch the datasets 
     for path in hf_paths:
         logger.info(f"Fetching {path}")
-        dataset = load_dataset(path, trust_remote_code=True, cache_dir='./cache/')
+        dataset = load_dataset(path, trust_remote_code=True)
         save_path = os.path.join(args.out, path.split('/')[-1])
+        if os.path.exists(save_path):
+            logger.info(f'{save_path} already exists, skipping')
+            continue
         logger.info(f'Saving to {save_path}')
         dataset.save_to_disk(save_path)
 
