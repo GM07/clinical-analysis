@@ -138,8 +138,8 @@ class PrometheusPromptGenerator:
                 if type(row[combination[0]]) == float or type(row[combination[1]]) == float:
                     continue
 
-                a_results = ast.literal_eval(row[combination[0]])[0]
-                b_results = ast.literal_eval(row[combination[1]])[0]
+                a_results = row[combination[0]] # ast.literal_eval(row[combination[0]])[0]
+                b_results = row[combination[1]] # ast.literal_eval(row[combination[1]])[0]
 
                 assert len(a_results) == len(b_results), f'The number of retrieved concepts between A {len(a_results)} is different from B ({len(b_results)})'
                 for (a_concept, a_result), (b_concept, b_result) in zip(a_results.items(), b_results.items()):
