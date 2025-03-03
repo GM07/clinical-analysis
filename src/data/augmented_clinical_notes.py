@@ -493,7 +493,7 @@ class AugmentedClinicalNotes:
 
         return self.data
 
-    def generate_prompts(self, output_path: str):
+    def generate_prompts(self, output_path: str, max_rows: int = 25000):
         """
         Prepares the dataset by filtering invalid extraction summaries, extracting information from summaries, and scattering extractions.
 
@@ -501,6 +501,7 @@ class AugmentedClinicalNotes:
 
         Args:
             output_path (str): The path to save the prompts to
+            max_rows (int): The maximum number of rows to save in the output file
         """
         initial_len = len(self.data)
         self.filter_extraction_summaries()
@@ -523,6 +524,9 @@ class AugmentedClinicalNotes:
         initial_len = len(self.data)
         self.generate_negative_samples()
         logger.info(f"Generated negative samples : {initial_len} -> {len(self.data)}")
+
+        self.data = self.data.shuffle() # Make sure all extractions are not linked to the same notes
+        self.data = self.data.select(range(max_rows))
 
         self.save(output_path)
 

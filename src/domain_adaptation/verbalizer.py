@@ -4,7 +4,7 @@ from datasets import Dataset as HuggingFaceDataset
 from src.data.dataset import PrunedConceptDataset, VerbalizedExtractionDataset
 from src.domain_adaptation.prompt_generator import PrunedConceptPromptGenerator
 from src.ontology.snomed import Snomed
-from src.pipelines.dataset_inference_pipeline import HFDatasetInferencePipeline
+from src.pipelines.dataset_inference_pipeline import DatasetInferencePipeline
 
 
 class Verbalizer:
@@ -20,7 +20,7 @@ class Verbalizer:
 
         # More efficient for inference
         hf_dataset = HuggingFaceDataset.from_pandas(data)
-        self.pipeline = HFDatasetInferencePipeline(model_path=self.model_path)
+        self.pipeline = DatasetInferencePipeline(model_path=self.model_path)
         for input_column in self.input_columns:
             hf_dataset = self.pipeline(hf_dataset, max_new_tokens=512, input_column=f'{input_column}_verbalizer_prompt', output_column=f'{input_column}_verbalized')
         return hf_dataset

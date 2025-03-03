@@ -5,7 +5,7 @@ from src.model_registry import FastModel, ModelRegistry
 from datasets import Dataset as HuggingFaceDataset
 import logging
 
-from src.pipelines.dataset_inference_pipeline import HFDatasetInferencePipeline
+from src.pipelines.dataset_inference_pipeline import DatasetInferencePipeline
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ class EvaluatorDatasetSummarizer:
 
     def __init__(self, dataset_path: str, model_checkpoint: str):
         self.dataset = HuggingFaceDataset.from_csv(dataset_path)
-        self.pipeline = HFDatasetInferencePipeline(model_checkpoint, input_column='CHAT', output_column='SUMMARY')
+        self.pipeline = DatasetInferencePipeline(model_checkpoint, input_column='CHAT', output_column='SUMMARY')
 
     def prepare_dataset(self, load_from_cache_file: bool = True):
         self.dataset = self.dataset.map(self.prepare_row, load_from_cache_file=load_from_cache_file, remove_columns=self.dataset.column_names)
