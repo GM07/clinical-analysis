@@ -39,13 +39,17 @@ class SumPubMed(SyntheticDataset):
         self.raw_data = load_from_disk(self.path)
         self.raw_data = concatenate_datasets([self.raw_data['train'], self.raw_data['test'], self.raw_data['dev']])
 
-    def generate_prompts(self):
+    def generate_prompts(self, output_path: str = None):
         self.positive_data = self.generate_positive_samples()
         self.negative_data = self.generate_negative_samples_prompts()
 
         # concatenate_datasets will set the value of columns to None if the datasets have different columns
-        # self.data = concatenate_datasets([self.positive_data, self.negative_data])
-        return self.negative_data # Only the negative samples are used for prompts
+        self.data = concatenate_datasets([self.positive_data, self.negative_data])
+
+        if output_path is not None:
+            self.data.to_csv(output_path, index=False)
+
+        return self.data
 
     def generate_negative_samples_prompts(self):
         """
@@ -74,6 +78,13 @@ class SumPubMed(SyntheticDataset):
             lambda example: {'input': PROMPT_TEMPLATE.format(sentence=example["sentence"])},
             desc="Generating chat messages"
         )
+
+        # Positive and negative data must have the same columns as they should be concatenable
+        # We put 'None' in a string so that when reading the file, the 
+        self.positive_data = self.positive_data.add_column('input', ['None'] * len(self.positive_data))
+        self.positive_data = self.positive_data.add_column('sentence', ['None'] * len(self.positive_data))
+        self.positive_data = self.positive_data.add_column('before', ['None'] * len(self.positive_data))
+        self.positive_data = self.positive_data.add_column('after', ['None'] * len(self.positive_data))
 
         return dataset
 

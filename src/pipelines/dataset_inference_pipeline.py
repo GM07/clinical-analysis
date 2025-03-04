@@ -6,8 +6,7 @@ import requests
 from typing import Callable, List
 from tqdm import tqdm
 
-if 'vllm' in sys.modules:
-    from vllm import LLM, SamplingParams
+from vllm import LLM, SamplingParams
 
 from src.data.dataset import DatasetPartition
 from datasets import Dataset as HuggingFaceDataset
