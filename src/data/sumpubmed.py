@@ -44,8 +44,8 @@ class SumPubMed(SyntheticDataset):
         self.negative_data = self.generate_negative_samples_prompts()
 
         # concatenate_datasets will set the value of columns to None if the datasets have different columns
-        self.data = concatenate_datasets([self.positive_data, self.negative_data])
-        return self.data
+        # self.data = concatenate_datasets([self.positive_data, self.negative_data])
+        return self.negative_data # Only the negative samples are used for prompts
 
     def generate_negative_samples_prompts(self):
         """

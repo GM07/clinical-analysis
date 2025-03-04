@@ -4,7 +4,7 @@ import logging
 from datasets import Dataset as HuggingFaceDataset
 
 from src.data.dataset import DatasetPartition
-from src.pipelines.dataset_inference_pipeline import DatasetInferencePipeline
+from src.pipelines.dataset_inference_pipeline import ModelDatasetInferencePipeline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,15 +26,13 @@ def main():
 
     print('Called with arguments : ', args)
 
-    pipeline = DatasetInferencePipeline(
+    pipeline = ModelDatasetInferencePipeline(
         model_path=args.checkpoint,
-        input_column=args.input_column,
-        output_column=args.output_column,
     )
 
     dataset = HuggingFaceDataset.from_csv(args.dataset)
 
-    output_dataset = pipeline(dataset)
+    output_dataset = pipeline(dataset, input_column=args.input_column, output_column=args.output_column)
 
     output_dataset.to_csv(args.output_path, index=False)
 
