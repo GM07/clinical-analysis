@@ -117,6 +117,7 @@ class DatasetInferencePipeline(InferencePipeline):
             chats = list(map(lambda x: [{'role': 'user', 'content': x}], prompts))
             return {tmp_column: chats}
         dataset = dataset.map(prompt_to_chat_for_row, batched=True, desc='Converting prompts to chat conversations')
+        print('prompt to chat : ', dataset.column_names)
         return dataset[tmp_column]
 
 
@@ -131,7 +132,6 @@ class DatasetInferencePipeline(InferencePipeline):
             apply_chat_template: Whether to apply the chat template to the input
             rows_to_chat: Function to convert rows to a chat. The function should take multiple rows and return a list of messages that can be sent to the LLM.
         """
-        print(apply_chat_template)
         if rows_to_chat is not None:
             # A function was given that converts rows to a chat. Apply it to the dataset and the output of this 
             # function is added to the dataset as a new column called f'{input_column}_tmp'
@@ -141,10 +141,8 @@ class DatasetInferencePipeline(InferencePipeline):
             dataset = dataset.map(apply_function, batched=True)
         else:
             if apply_chat_template:
-                print('here')
                 # The input column is a prompt. Convert it to a chat template
-
-                self.prompt_to_chat(dataset, input_column, tmp_column)
+                dataset = dataset.add_column(tmp_column, self.prompt_to_chat(dataset, input_column, tmp_column))
             else:
                 # The input column already contains the chat template
                 tmp_column = input_column
