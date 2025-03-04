@@ -108,6 +108,18 @@ class DatasetInferencePipeline(InferencePipeline):
 
         return dataset
 
+    def prompt_to_chat(self, dataset: HuggingFaceDataset, input_column: str = 'input', tmp_column: str = 'tmp'):
+        """
+        Converts a prompt to a chat format
+        """
+        def prompt_to_chat_for_row(data):
+            prompts = data[input_column]
+            chats = list(map(lambda x: [{'role': 'user', 'content': x}], prompts))
+            return {tmp_column: chats}
+        dataset = dataset.map(prompt_to_chat_for_row, batched=True)
+        return dataset[tmp_column]
+
+
     def get_chats(self, dataset: HuggingFaceDataset, input_column: str = 'input', tmp_column: str = 'input_tmp', apply_chat_template: bool = True, rows_to_chat: Callable = None):
         """
         Gets the chats that needs to be sent to the LLM from the dataset
@@ -204,17 +216,6 @@ class ProviderDatasetInferencePipeline(DatasetInferencePipeline):
     Abstract class for provider-based inference pipelines (vllm, togetherAI, etc)
     """
     
-    def prompt_to_chat(self, dataset: HuggingFaceDataset, input_column: str = 'input', tmp_column: str = 'tmp'):
-        """
-        Converts a prompt to a chat format
-        """
-        def prompt_to_chat_for_row(data):
-            prompts = data[input_column]
-            chats = list(map(lambda x: [{'role': 'user', 'content': x}], prompts))
-            return {tmp_column: chats}
-        dataset = dataset.map(prompt_to_chat_for_row, batched=True)
-        return dataset[tmp_column]
-
     async def __call__(
         self, 
         dataset: HuggingFaceDataset, 
