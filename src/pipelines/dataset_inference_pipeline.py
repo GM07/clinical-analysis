@@ -117,7 +117,6 @@ class DatasetInferencePipeline(InferencePipeline):
             chats = list(map(lambda x: [{'role': 'user', 'content': x}], prompts))
             return {tmp_column: chats}
         dataset = dataset.map(prompt_to_chat_for_row, batched=True, desc='Converting prompts to chat conversations')
-        print('prompt to chat : ', dataset.column_names)
         return dataset[tmp_column]
 
 
