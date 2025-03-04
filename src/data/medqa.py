@@ -4,7 +4,9 @@ from datasets import Dataset
 import pandas as pd
 from tqdm import tqdm
 
-class MedQA:
+from src.data.synthetic_dataset import SyntheticDataset
+
+class MedQA(SyntheticDataset):
 
     QUESTION_PATTERN = r'^(.*?)([^.!?]+\?)$'
     DEFAULT_SYSTEM_PROMPT = 'Given a medical text, a question about the text and the associated answer, your role is to transform the question into a statement by incorporating the answer with it. Do not add any details that is not mentioned in the question or the answer.'

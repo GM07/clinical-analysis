@@ -24,12 +24,12 @@ def main():
     
     # Fetch the datasets 
     for path in hf_paths:
-        logger.info(f"Fetching {path}")
-        dataset = load_dataset(path, trust_remote_code=True)
-        save_path = os.path.join(args.out, path.split('/')[-1])
         if os.path.exists(save_path):
             logger.info(f'{save_path} already exists, skipping')
             continue
+        logger.info(f"Fetching {path}")
+        dataset = load_dataset(path, trust_remote_code=True)
+        save_path = os.path.join(args.out, path.split('/')[-1])
         logger.info(f'Saving to {save_path}')
         dataset.save_to_disk(save_path)
 

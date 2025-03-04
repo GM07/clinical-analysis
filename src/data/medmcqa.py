@@ -4,7 +4,9 @@ from datasets import load_dataset, load_from_disk
 import pandas as pd
 from tqdm import tqdm
 
-class MedMCQA:
+from src.data.synthetic_dataset import SyntheticDataset
+
+class MedMCQA(SyntheticDataset):
 
     DEFAULT_SYSTEM_PROMPT = 'Given a question and an answer, your role is to transform the question into a statement by incorporating the answer with it. Do not add any details that is not mentioned in the question or the answer.'
     DEFAULT_ONE_SHOT_USER = 'Question: Which of the following agents is most commonly associated with recurrent meningitis due to CSF leaks?\nAnswer: Pneumococci'

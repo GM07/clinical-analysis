@@ -5,6 +5,7 @@ import os
 import time
 from datasets import load_dataset, load_from_disk
 from tqdm import tqdm
+from src.data.synthetic_dataset import SyntheticDataset
 from src.utils import valid_json
 import logging
 
@@ -372,7 +373,7 @@ Summary : Summary of patient's discharge
 
 """
 
-class AugmentedClinicalNotes:
+class AugmentedClinicalNotes(SyntheticDataset):
     """
     Class to load and prepare the AugmentedClinicalNotes dataset.
 
