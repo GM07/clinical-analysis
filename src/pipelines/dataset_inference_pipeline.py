@@ -136,7 +136,7 @@ class DatasetInferencePipeline(InferencePipeline):
 
         return dataset[tmp_column]
 
-    def apply_chat_template_dataset(self, dataset: HuggingFaceDataset, column: list[str] = None, output_column: str = 'input_tmp'):
+    def apply_chat_template_dataset(self, dataset: HuggingFaceDataset, column: list[str] = None, output_column: str = 'tmp'):
         """
         Applies the chat template to a column of the dataset. New column is added to the dataset.
 
