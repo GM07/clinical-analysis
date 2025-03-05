@@ -116,10 +116,8 @@ class PrunedConceptPromptGenerator(PromptGenerator):
             clinical_notes = clinical_notes_series.tolist()
 
             note_strings = []
-            for i, note in enumerate(clinical_notes):
+            for _, note in enumerate(clinical_notes):
                 clinical_note_string = ''
-                if isinstance(note, str):
-                    print(note)
 
                 for concept_id, sentence in note.items():
                     if sentence == 'N/A':

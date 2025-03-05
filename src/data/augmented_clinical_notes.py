@@ -2,6 +2,7 @@ from collections import defaultdict
 import json
 import random
 import os
+import re
 import time
 from datasets import load_dataset, load_from_disk
 from tqdm import tqdm
@@ -536,6 +537,33 @@ class AugmentedClinicalNotes(SyntheticDataset):
         Save the dataset to a csv file
         """
         self.data.to_csv(path)
+
+
+    @staticmethod
+    def fix_sex_generations(factual_statement: str, hallucinated_statement: str):
+        """
+        Fix the sex generations
+
+        Args:
+            factual_statement (str): The factual statement
+            hallucinated_statement (str): The hallucinated statement
+
+        Returns:
+            tuple: A tuple containing the fixed factual statement and the hallucinated statement
+        """
+
+        patient_male = len(re.findall(r'\s(?:male|man|boy)', factual_statement, re.IGNORECASE)) > 0
+        hallucinated_male = len(re.findall(r'\s(?:male|man|boy)', hallucinated_statement, re.IGNORECASE)) > 0
+
+        if patient_male and not hallucinated_male:
+            return factual_statement, hallucinated_statement
+        elif patient_male and hallucinated_male:
+            return factual_statement, re.sub(r'\s(?:male|man|boy)', ' female', hallucinated_statement)
+        elif not patient_male and not hallucinated_male:
+            return factual_statement, re.sub(r'\s(?:female|woman|girl)', ' male', hallucinated_statement)
+        else:
+            return factual_statement, hallucinated_statement
+
 
     def _extract_information_from_row(self, row):
         """
