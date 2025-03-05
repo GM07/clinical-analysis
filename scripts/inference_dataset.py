@@ -14,11 +14,11 @@ logging.basicConfig(
 
 parser = ArgumentParser(description='Runs inference on a dataset partition.')
 
-parser.add_argument('--checkpoint', type=str, help='Model checkpoint')
-parser.add_argument('--dataset', type=str, help='Path to dataset (csv)')
+parser.add_argument('--checkpoint', type=str, required=True, help='Model checkpoint')
+parser.add_argument('--dataset', type=str, required=True, help='Path to dataset (csv)')
+parser.add_argument('--output_path', type=str, required=True, help='Path where the output dataset will be saved')
 parser.add_argument('--input_column', type=str, default='PROMPT', help='Column to use as input')
 parser.add_argument('--output_column', type=str, default='OUTPUT', help='Column to use as output')
-parser.add_argument('--output_path', type=str, help='Path where the output dataset will be saved')
 
 def main():
 

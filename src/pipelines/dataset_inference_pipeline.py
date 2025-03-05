@@ -101,24 +101,12 @@ class DatasetInferencePipeline(InferencePipeline):
 
         output_column = output_column if output_column is not None else self.output_column
         dataset = dataset.add_column(output_column, results)
-        dataset = dataset.remove_columns(f'{input_column}_template')
+        dataset = dataset.remove_columns(f'{input_column}_tmp')
 
         if saving_path is not None:
             dataset.to_csv(saving_path, index=False)
 
         return dataset
-
-    def prompt_to_chat(self, dataset: HuggingFaceDataset, input_column: str = 'input', tmp_column: str = 'tmp'):
-        """
-        Converts a prompt to a chat format
-        """
-        def prompt_to_chat_for_row(data):
-            prompts = data[input_column]
-            chats = list(map(lambda x: [{'role': 'user', 'content': x}], prompts))
-            return {tmp_column: chats}
-        dataset = dataset.map(prompt_to_chat_for_row, batched=True, desc='Converting prompts to chat conversations')
-        return dataset[tmp_column]
-
 
     def get_chats(self, dataset: HuggingFaceDataset, input_column: str = 'input', tmp_column: str = 'input_tmp', apply_chat_template: bool = True, rows_to_chat: Callable = None):
         """
@@ -141,14 +129,14 @@ class DatasetInferencePipeline(InferencePipeline):
         else:
             if apply_chat_template:
                 # The input column is a prompt. Convert it to a chat template
-                dataset = dataset.add_column(tmp_column, self.prompt_to_chat(dataset, input_column, tmp_column))
+                dataset = dataset.add_column(tmp_column, self.apply_chat_template_dataset(dataset, input_column, tmp_column))
             else:
                 # The input column already contains the chat template
                 tmp_column = input_column
 
         return dataset[tmp_column]
 
-    def apply_chat_template_dataset(self, dataset: HuggingFaceDataset, column: list[str] = None, output_column: str = 'tmp'):
+    def apply_chat_template_dataset(self, dataset: HuggingFaceDataset, column: list[str] = None, output_column: str = 'input_tmp'):
         """
         Applies the chat template to a column of the dataset. New column is added to the dataset.
 
@@ -169,6 +157,12 @@ class DatasetInferencePipeline(InferencePipeline):
             return {output_column: self.apply_chat_template(inputs)}
         dataset = dataset.map(apply_chat_template_for_row, batched=True)
         return dataset[output_column]
+    
+    @abstractmethod
+    def apply_chat_template(self, inputs):
+        raise NotImplementedError('The apply_chat_template method not implemented by the subclass. If this function\
+                                  does not need to be implemented, specify a rows_to_chat callable when calling the pipeline.')
+        pass
 
 class ModelDatasetInferencePipeline(DatasetInferencePipeline, ModelInferencePipeline):
     """
@@ -177,6 +171,9 @@ class ModelDatasetInferencePipeline(DatasetInferencePipeline, ModelInferencePipe
 
     def __init__(self, model_path: str):
         ModelInferencePipeline.__init__(self, model_path)
+
+    def apply_chat_template(self, inputs):
+        return ModelInferencePipeline.apply_chat_template(self, inputs)
 
 class ModelPartitionedInferencePipeline(ModelInferencePipeline):
     """
@@ -302,6 +299,20 @@ class ProviderDatasetInferencePipeline(DatasetInferencePipeline):
         Calls the provider
         """
         pass
+
+    def prompt_to_chat(self, dataset: HuggingFaceDataset, input_column: str = 'input', tmp_column: str = 'tmp'):
+        """
+        Converts a prompt to a chat format
+        """
+        def prompt_to_chat_for_row(data):
+            prompts = data[input_column]
+            chats = list(map(lambda x: [{'role': 'user', 'content': x}], prompts))
+            return {tmp_column: chats}
+        dataset = dataset.map(prompt_to_chat_for_row, batched=True, desc='Converting prompts to chat conversations')
+        return dataset[tmp_column]
+
+    def apply_chat_template(self, inputs):
+        return inputs
 
     async def run_inference(self, inputs: List, max_new_tokens: int = 128, start_idx: int = 0, max_rows_to_process: int = None, batch_size: int = 8):
         """
