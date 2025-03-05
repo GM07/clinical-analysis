@@ -7,14 +7,17 @@ from datasets import load_from_disk, concatenate_datasets
 from src.data.synthetic_dataset import SyntheticDataset
 
 PROMPT_TEMPLATE = """
-Transform the input sentence by introducing a deliberate inaccuracy. Strategies can include:
+You will be given a text and a sentence that was extracted from the text.
+Your task is to transform the sentence by introducing a deliberate inaccuracy. Strategies can include:
 - Changing numerical values
 - Inverting the meaning
 - Using antonyms
 - Negating the original statement
 
-Ensure the new sentence remains grammatically correct but semantically different from the original. Only output the transformed sentence, no other text.
-Here is the sentence: {sentence}
+Text: {text}
+Sentence: {sentence}
+
+Ensure the new sentence remains grammatically correct but semantically different from the original. Only output the transformed sentence without any additional text.
 """
 
 class SumPubMed(SyntheticDataset):
@@ -75,12 +78,12 @@ class SumPubMed(SyntheticDataset):
             desc="Filtering out examples with not enough sentences"
         )
         dataset = dataset.map(
-            lambda example: {'input': PROMPT_TEMPLATE.format(sentence=example["sentence"])},
+            lambda example: {'input': PROMPT_TEMPLATE.format(text=example["text"], sentence=example["sentence"])},
             desc="Generating chat messages"
         )
 
         # Positive and negative data must have the same columns as they should be concatenable
-        # We put 'None' in a string so that when reading the file, the 
+        # We put 'None' in a string so that when reading the file, the column's type is string
         self.positive_data = self.positive_data.add_column('input', ['None'] * len(self.positive_data))
         self.positive_data = self.positive_data.add_column('sentence', ['None'] * len(self.positive_data))
         self.positive_data = self.positive_data.add_column('before', ['None'] * len(self.positive_data))
