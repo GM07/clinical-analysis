@@ -101,7 +101,7 @@ class DatasetInferencePipeline(InferencePipeline):
 
         output_column = output_column if output_column is not None else self.output_column
         dataset = dataset.add_column(output_column, results)
-        dataset = dataset.remove_columns(f'{input_column}_tmp')
+        # dataset = dataset.remove_columns(f'{input_column}_tmp')
 
         if saving_path is not None:
             dataset.to_csv(saving_path, index=False)
