@@ -21,8 +21,8 @@ parser.add_argument('--input_column', type=str, required=True, help='Column cont
 parser.add_argument('--snomed', type=str, required=True, help='Path to SNOMED file (owl file)')
 parser.add_argument('--snomed_cache', type=str, required=True, help='Path to SNOMED cache file')
 parser.add_argument('--dcf_files', type=str, nargs='+', required=True, help='Path to DCF files (one per domain)')
-parser.add_argument('--alpha', type=int, default=1, help='Alpha value')
-parser.add_argument('--output_dataset', type=str, required=True, help='Path to output dataset file')
+parser.add_argument('--alpha', type=int, nargs='+', default=[1], help='Alpha value')
+parser.add_argument('--output_dataset', type=str, required=True, help='Path to output dataset file (must be .csv)')
 
 def main():
 
@@ -30,14 +30,18 @@ def main():
 
     print('Called with arguments : ', args)
 
+    assert args.output_dataset.endswith('.csv'), 'Output dataset must be a csv file'
+
     dataset = ExtractionDataset(column=args.input_column, dataset_path=args.dataset)
     snomed = Snomed(args.snomed, args.snomed_cache)
-    for dcf_path in args.dcf_files:
-        dcf = DomainClassFrequency.load(dcf_path)
-        pruner = Pruner(dcf, snomed)
-        pruner.prune_dataset(dataset, args.input_column, args.alpha)
-    
-    dataset.save(args.output_dataset)
+    for alpha in args.alpha:
+        for dcf_path in args.dcf_files:
+            dcf = DomainClassFrequency.load(dcf_path)
+            pruner = Pruner(dcf, snomed)
+            pruner.prune_dataset(dataset, args.input_column, alpha)
+        
+        output_path = args.output_dataset.replace('.csv', f'_a{alpha}.csv')
+        dataset.save(output_path)
 
 if __name__ == '__main__':
     main()

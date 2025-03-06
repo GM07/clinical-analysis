@@ -32,7 +32,7 @@ def main():
 
     snomed = Snomed(args.snomed, args.snomed_cache)
 
-    columns = ['constrained_ecg', 'constrained_nursing_other', 'constrained_radiology']
+    columns = ['constrained_ecg', 'constrained_nursing', 'constrained_radiology', 'constrained_physician_']
     verbalizer = Verbalizer(model_path=args.model_path, tokenizer_path=args.tokenizer_path, input_columns=columns, snomed=snomed)
 
     pruned_dataset = PrunedConceptDataset(columns=columns, dataset_path=args.dataset)

@@ -52,6 +52,27 @@ class HumanEvaluation:
 
         self.id_to_notes = self.dataset.groupby('HADM_ID')['TEXT'].aggregate(admission_to_prompt)
 
+    def from_verbalized_dataset(
+        self, 
+        dataset_path: str, 
+        method: str, 
+        output_path: str = None, 
+        max_samples: int = 10
+    ):
+        """
+        Converts a verbalized dataset to a human evaluation dataset 
+
+        Args:
+            dataset_path: Path to the dataset
+            method: Method that was used to generate the summary
+            output_path: Path to save the dataset
+            max_samples: Maximum number of samples to convert
+        """
+
+        columns = ['constrained_ecg_verbalized', 'constrained_nursing_verbalized', 'constrained_radiology_verbalized']
+
+        dataset = VerbalizedExtractionDataset(columns=columns, dataset_path=dataset_path)
+
     def from_baseline_dataset(
         self, 
         dataset_path: str, 
