@@ -19,7 +19,7 @@ parser = ArgumentParser(description='Program that prunes the extractions of a da
 
 parser.add_argument('--dataset', type=str, nargs='+', required=True, help='Path to extraction dataset file (csv file)')
 parser.add_argument('--model_path', type=str, required=True, help='Path to huggingface model file')
-parser.add_argument('--tokenizer_path', type=str, required=True, help='Path to huggingface tokenizer file')
+parser.add_argument('--tokenizer_path', type=str, default=None, help='Path to huggingface tokenizer file')
 parser.add_argument('--snomed', type=str, required=True, help='Path to SNOMED file (owl file)')
 parser.add_argument('--snomed_cache', type=str, required=True, help='Path to SNOMED cache file')
 parser.add_argument('--output_dataset', type=str, nargs='+', required=True, help='Path to output dataset file')
