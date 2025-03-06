@@ -11,7 +11,7 @@ from src.generation.generation import OntologyBasedPrompter, OntologyConstrained
 from src.generation.ontology_beam_scorer import GenerationConfig
 from src.ontology.medcat_annotator import MedCatAnnotator
 from src.ontology.snomed import Snomed
-from src.pipelines.dataset_inference_pipeline import DatasetInferencePipeline
+from src.pipelines.dataset_inference_pipeline import ModelDatasetInferencePipeline
 from src.pipelines.pipeline import Pipeline
 from src.model_registry import LoadingConfig, ModelRegistry
 
@@ -113,7 +113,7 @@ class DatasetExtractionPipeline(ExtractionPipeline):
         self.medcat = MedCatAnnotator(self.medcat_path, device=self.medcat_device)
 
         logger.info(f'Loading model from {self.checkpoint_path}')
-        self.pipeline = DatasetInferencePipeline(
+        self.pipeline = ModelDatasetInferencePipeline(
             model_path=self.checkpoint_path,
             input_column='PROMPT',
             output_column='OUTPUT'
