@@ -41,8 +41,9 @@ class ExtractionPipeline(Pipeline):
         snomed_cache_path: str,
         medcat_path: str,
         medcat_device: str = 'cuda',
-        loading_config: LoadingConfig = LoadingConfig()
-    ):
+        loading_config: LoadingConfig = LoadingConfig(),
+        tokenizer_path: str = None
+    )
         """
         Args:
             checkpoint_path: Path to the model (if path does not exist locally, the model will be fetched)
@@ -55,6 +56,7 @@ class ExtractionPipeline(Pipeline):
         super().__init__()
 
         self.checkpoint_path = checkpoint_path
+        self.tokenizer_path = tokenizer_path
         self.snomed_path = snomed_path
         self.snomed_cache_path = snomed_cache_path
         self.medcat_path = medcat_path
@@ -65,7 +67,11 @@ class ExtractionPipeline(Pipeline):
         """
         Loads the model, the tokenizer, the snomed ontology and the medcat annotator
         """
-        self.model, self.tokenizer = ModelRegistry.load_single_checkpoint(self.checkpoint_path, loading_config=self.loading_config)
+        if self.tokenizer_path is None:
+            self.model, self.tokenizer = ModelRegistry.load_single_checkpoint(self.checkpoint_path, loading_config=self.loading_config)
+        else:
+            self.model = ModelRegistry.load_single_model(self.checkpoint_path)
+            self.tokenizer = ModelRegistry.load_single_tokenizer(self.tokenizer_path)
         self.snomed = Snomed(self.snomed_path, self.snomed_cache_path, nb_classes=366771)
         self.medcat = MedCatAnnotator(self.medcat_path, device=self.medcat_device)
  
@@ -91,7 +97,8 @@ class DatasetExtractionPipeline(ExtractionPipeline):
         snomed_cache_path: str,
         medcat_path: str,
         medcat_device: str = 'cuda',
-        loading_config: LoadingConfig = LoadingConfig()
+        loading_config: LoadingConfig = LoadingConfig(),
+        tokenizer_path: str = None
     ):
         """
         Args:
@@ -101,7 +108,7 @@ class DatasetExtractionPipeline(ExtractionPipeline):
             medcat_path: Path to medcat annotator model
             medcat_device: Device used by the medcat annotator
         """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path)
 
     def load(self):
         """
@@ -209,7 +216,8 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
         snomed_cache_path: str,
         medcat_path: str,
         medcat_device: str = 'cuda',
-        loading_config: LoadingConfig = LoadingConfig()
+        loading_config: LoadingConfig = LoadingConfig(),
+        tokenizer_path: str = None
     ):
         """
         Args:
@@ -220,7 +228,7 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
             medcat_device: Device used by the medcat annotator
             loading_config: Loading configuration used to load the model
         """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path)
 
     def __call__(self, clinical_note: str, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
         """
@@ -278,7 +286,8 @@ class DatasetComparisonExtractionPipeline(ExtractionPipeline):
         snomed_cache_path: str,
         medcat_path: str,
         medcat_device: str = 'cuda',
-        loading_config: LoadingConfig = LoadingConfig()
+        loading_config: LoadingConfig = LoadingConfig(),
+        tokenizer_path: str = None
     ):
         """
         Args:
@@ -289,7 +298,7 @@ class DatasetComparisonExtractionPipeline(ExtractionPipeline):
             medcat_device: Device used by the medcat annotator
             loading_config: Loading configuration used to load the model
         """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path)
 
 
     def __call__(self, dataset: HuggingFaceDataset, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
@@ -354,7 +363,8 @@ class PartitionedComparisonExtractionPipeline(ExtractionPipeline):
         snomed_cache_path: str,
         medcat_path: str,
         medcat_device: str = 'cuda',
-        loading_config: LoadingConfig = LoadingConfig()
+        loading_config: LoadingConfig = LoadingConfig(),
+        tokenizer_path: str = None
     ):
         """
         Args:
@@ -365,7 +375,7 @@ class PartitionedComparisonExtractionPipeline(ExtractionPipeline):
             medcat_device: Device used by the medcat annotator
             loading_config: Loading configuration used to load the model
         """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path)
 
     def __call__(self, partition: DatasetPartition, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
         """
@@ -439,7 +449,8 @@ class PartitionedExtractionPipeline(ExtractionPipeline):
         snomed_cache_path: str,
         medcat_path: str,
         medcat_device: str = 'cuda',
-        loading_config: LoadingConfig = LoadingConfig()
+        loading_config: LoadingConfig = LoadingConfig(),
+        tokenizer_path: str = None
     ):
         """
         Args:
@@ -449,7 +460,7 @@ class PartitionedExtractionPipeline(ExtractionPipeline):
             medcat_path: Path to medcat annotator model
             medcat_device: Device used by the medcat annotator
         """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path)
 
     def __call__(
         self, 

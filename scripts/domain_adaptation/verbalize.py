@@ -19,6 +19,7 @@ parser = ArgumentParser(description='Program that prunes the extractions of a da
 
 parser.add_argument('--dataset', type=str, required=True, help='Path to extraction dataset file (csv file)')
 parser.add_argument('--model_path', type=str, required=True, help='Path to huggingface model file')
+parser.add_argument('--tokenizer_path', type=str, required=True, help='Path to huggingface tokenizer file')
 parser.add_argument('--snomed', type=str, required=True, help='Path to SNOMED file (owl file)')
 parser.add_argument('--snomed_cache', type=str, required=True, help='Path to SNOMED cache file')
 parser.add_argument('--output_dataset', type=str, required=True, help='Path to output dataset file')
@@ -32,7 +33,7 @@ def main():
     snomed = Snomed(args.snomed, args.snomed_cache)
 
     columns = ['constrained_ecg', 'constrained_nursing_other', 'constrained_radiology']
-    verbalizer = Verbalizer(model_path=args.model_path, input_columns=columns, snomed=snomed)
+    verbalizer = Verbalizer(model_path=args.model_path, tokenizer_path=args.tokenizer_path, input_columns=columns, snomed=snomed)
 
     pruned_dataset = PrunedConceptDataset(columns=columns, dataset_path=args.dataset)
     verbalized_dataset = verbalizer.verbalize_dataset(pruned_dataset)

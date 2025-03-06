@@ -9,10 +9,11 @@ from src.pipelines.dataset_inference_pipeline import ModelDatasetInferencePipeli
 
 class Verbalizer:
 
-    def __init__(self, model_path: str, input_columns: list[str], snomed: Snomed):
+    def __init__(self, model_path: str, tokenizer_path: str, input_columns: list[str], snomed: Snomed):
         self.input_columns = input_columns
         self.snomed = snomed
         self.model_path = model_path
+        self.tokenizer_path = tokenizer_path
 
     def verbalize_dataset(self, dataset: PrunedConceptDataset):
         self.prompt_generator = PrunedConceptPromptGenerator(mimic=dataset.data, snomed=self.snomed, input_columns=self.input_columns)
@@ -20,7 +21,7 @@ class Verbalizer:
 
         # More efficient for inference
         hf_dataset = HuggingFaceDataset.from_pandas(data)
-        self.pipeline = ModelDatasetInferencePipeline(model_path=self.model_path)
+        self.pipeline = ModelDatasetInferencePipeline(model_path=self.model_path, tokenizer_path=self.tokenizer_path)
         for input_column in self.input_columns:
             hf_dataset = self.pipeline(hf_dataset, max_new_tokens=512, input_column=f'{input_column}_verbalizer_prompt', output_column=f'{input_column}_verbalized')
         return hf_dataset

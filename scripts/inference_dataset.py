@@ -15,6 +15,7 @@ logging.basicConfig(
 parser = ArgumentParser(description='Runs inference on a dataset partition.')
 
 parser.add_argument('--checkpoint', type=str, required=True, help='Model checkpoint')
+parser.add_argument('--tokenizer', type=str, required=False, default=None, help='Tokenizer checkpoint')
 parser.add_argument('--dataset', type=str, required=True, help='Path to dataset (csv)')
 parser.add_argument('--output_path', type=str, required=True, help='Path where the output dataset will be saved')
 parser.add_argument('--input_column', type=str, default='PROMPT', help='Column to use as input')
@@ -28,6 +29,7 @@ def main():
 
     pipeline = ModelDatasetInferencePipeline(
         model_path=args.checkpoint,
+        tokenizer_path=args.tokenizer
     )
 
     dataset = HuggingFaceDataset.from_csv(args.dataset)

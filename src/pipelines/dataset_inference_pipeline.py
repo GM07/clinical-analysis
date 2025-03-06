@@ -33,9 +33,13 @@ class ModelInferencePipeline(InferencePipeline):
     Abstract class for inference pipelines
     """
 
-    def __init__(self, model_path: str):
-        self.llm = LLM(model=model_path, tokenizer=model_path)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+    def __init__(self, model_path: str, tokenizer_path: str = None):
+        if tokenizer_path is None:
+            self.llm = LLM(model=model_path)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+        else:
+            self.llm = LLM(model=model_path, tokenizer=tokenizer_path)
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 
     def run_inference(self, inputs: List, max_new_tokens: int = 128):
         """
@@ -169,8 +173,8 @@ class ModelDatasetInferencePipeline(DatasetInferencePipeline, ModelInferencePipe
     Pipeline class for LLM inference using vLLM on a dataset's partition
     """
 
-    def __init__(self, model_path: str):
-        ModelInferencePipeline.__init__(self, model_path)
+    def __init__(self, model_path: str, tokenizer_path: str = None):
+        ModelInferencePipeline.__init__(self, model_path, tokenizer_path)
 
     def apply_chat_template(self, inputs):
         return ModelInferencePipeline.apply_chat_template(self, inputs)
