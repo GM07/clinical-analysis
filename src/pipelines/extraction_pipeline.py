@@ -43,7 +43,7 @@ class ExtractionPipeline(Pipeline):
         medcat_device: str = 'cuda',
         loading_config: LoadingConfig = LoadingConfig(),
         tokenizer_path: str = None
-    )
+    ):
         """
         Args:
             checkpoint_path: Path to the model (if path does not exist locally, the model will be fetched)
