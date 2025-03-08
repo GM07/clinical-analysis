@@ -31,7 +31,74 @@ class MedHal:
         return len(sentences) == 1
 
     @staticmethod
-    def from_augmented_clinical_notes(path: str, output_path: str, llm_output_column: str = 'output'):
+    def from_all(
+        acm_path: str,
+        medmcqa_path: str,
+        medqa_path: str,
+        mednli_path: str,
+        sumpubmed_positive_path: str,
+        sumpubmed_negative_path: str,
+        output_path: str = None
+    ):
+
+        acm_dataset = MedHal.from_augmented_clinical_notes(acm_path)
+        medmcqa_dataset = MedHal.from_medmcqa(medmcqa_path)
+        medqa_dataset = MedHal.from_medqa(medqa_path)
+        mednli_dataset = MedHal.from_mednli(mednli_path)
+        splitted_sumpubmed_dataset = MedHal.from_splitted_sumpubmed(sumpubmed_positive_path, sumpubmed_negative_path)
+
+        assert set(acm_dataset.column_names) == set(medmcqa_dataset.column_names) == set(medqa_dataset.column_names) == set(splitted_sumpubmed_dataset.column_names), \
+            f"All datasets must have the same column names {acm_dataset.column_names} vs {medmcqa_dataset.column_names} vs {medqa_dataset.column_names} vs {splitted_sumpubmed_dataset.column_names}"
+
+        final_dataset = concatenate_datasets([acm_dataset, medmcqa_dataset, medqa_dataset, splitted_sumpubmed_dataset, mednli_dataset]).shuffle(seed=42)
+
+        if output_path is not None:
+            final_dataset.to_csv(output_path, index=False)
+
+        return final_dataset
+        
+    @staticmethod
+    def from_mednli(path: str, output_path: str = None):
+        """
+        Constructs the MedHal dataset from a processed MedNLI dataset.
+
+        Args:
+            path: Path to the processed MedNLI dataset.
+            output_path: Path to the output file where the MedHal samples will be saved.
+        """
+        dataset = HuggingFaceDataset.from_csv(path)
+
+        def transform_mednli_to_medhal(x):
+
+            assert x['factual'][0] and not x['factual'][1], "The first sample must be correct and the second one must be incorrect"
+            assert x['context'][0] == x['context'][1], f"The first sample must have the same context as the second one ({x['context'][0]} vs {x['context'][1]})"
+
+            return {
+                'id': [str(uuid.uuid4()) for _ in range(len(x['internal_id']))],
+                'context': x['context'],
+                'statement': x['statement'],
+                'label': x['factual'],
+                'explanation': [MedHal.FACTUAL_EXPLANATION, x['statement'][0]],
+                'inner_id': [str(id) for id in x['internal_id']],
+                'source': ['mednli'] * len(x['internal_id']),
+                'synthetic': [False] * len(x['internal_id'])
+            }
+        
+        dataset = dataset.map(
+            transform_mednli_to_medhal,
+            desc="Transforming MedNLI to MedHal",
+            batched=True,
+            batch_size=2,
+            remove_columns=dataset.column_names
+        )
+
+        if output_path is not None:
+            dataset.to_csv(output_path, index=False)
+
+        return dataset
+
+    @staticmethod
+    def from_augmented_clinical_notes(path: str, output_path: str = None, llm_output_column: str = 'output'):
         """
         Constructs the MedHal dataset from a processed augmented clinical notes dataset.
 
@@ -64,7 +131,7 @@ class MedHal:
                 'statement': [factual_statement, hallucinated_statement],
                 'label': [True, False],
                 'explanation': [MedHal.FACTUAL_EXPLANATION, factual_statement],
-                'inner_id': x['idx'],
+                'inner_id': [str(id) for id in x['idx']],
                 'source': ['acm'] * len(x['idx']),
                 'synthetic': [True, False]
             }
@@ -79,11 +146,14 @@ class MedHal:
 
         dataset = dataset.filter(lambda x: x['statement'] != 'None', desc="Filtering multiple sentence statements")
 
+        if output_path is not None:
+            dataset.to_csv(output_path, index=False)
+
         return dataset
 
 
     @staticmethod
-    def from_medmcqa(path: str, output_path: str, llm_output_column: str = 'output'):
+    def from_medmcqa(path: str, output_path: str = None, llm_output_column: str = 'output'):
         """
         Constructs the MedHal dataset from a processed MedMCQA dataset.
 
@@ -116,7 +186,7 @@ class MedHal:
                  # Explanation of the factual statement is the explanation given in the dataset
                  # Explanation of the non-factual statement is the true statement
                 'explanation': [x['explanation'][0], x[llm_output_column][0]],
-                'inner_id': x['id'],
+                'inner_id': [str(id) for id in x['id']],
                 'source': ['medmcqa'] * len(x['id']),
                 'synthetic': [True] * len(x['id'])
             }
@@ -137,7 +207,7 @@ class MedHal:
         return dataset
 
     @staticmethod
-    def from_medqa(path: str, output_path: str, llm_output_column: str = 'output'):
+    def from_medqa(path: str, output_path: str = None, llm_output_column: str = 'output'):
         """
         Constructs the MedHal dataset from a processed MedQA dataset.
 
@@ -159,7 +229,7 @@ class MedHal:
                 'statement': x[llm_output_column],
                 'label': x['is_correct'],
                 'explanation': [MedHal.FACTUAL_EXPLANATION, x[llm_output_column][0]],
-                'inner_id': x['id'],
+                'inner_id': [str(id) for id in x['id']],
                 'source': ['medqa'] * len(x['id']),
                 'synthetic': [True] * len(x['id'])
             }
@@ -180,7 +250,7 @@ class MedHal:
         return dataset
 
     @staticmethod
-    def from_splitted_sumpubmed(positive_path: str, negative_path: str, output_path: str, llm_output_column: str = 'OUTPUT'):
+    def from_splitted_sumpubmed(positive_path: str, negative_path: str, output_path: str = None, llm_output_column: str = 'OUTPUT'):
         """
         Constructs the MedHal dataset from a splitted SumPubMed dataset. The dataset is splitted in the sense
         that positive and negative samples are in different files.
@@ -204,7 +274,7 @@ class MedHal:
                 'statement': x['summary'],
                 'label': [True] * len(x['text']),
                 'explanation': [MedHal.FACTUAL_EXPLANATION] * len(x['text']),
-                'inner_id': x['id'],
+                'inner_id': [str(id) for id in x['id']],
                 'source': ['sumpubmed'] * len(x['text']),
                 'synthetic': [False] * len(x['text'])
             }
@@ -233,20 +303,16 @@ class MedHal:
                 'statement': fake_summaries,
                 'label': [False] * len(x['text']),
                 'explanation': explanations,
-                'inner_id': x['id'],
+                'inner_id': [str(id) for id in x['id']],
                 'source': ['sumpubmed'] * len(x['text']),
                 'synthetic': [True] * len(x['text'])
             }
         
-        print('Before : ', len(negative_dataset))
-
 
         negative_dataset = negative_dataset.filter(
             lambda x: 'Here' not in x[llm_output_column] or 'transformed sentence' not in x[llm_output_column],
             desc="Filtering negative samples"
         )
-
-        print(len(negative_dataset))
 
         negative_ready_dataset = negative_dataset.map(
             generate_negative_samples,
@@ -256,7 +322,7 @@ class MedHal:
         )
 
         # Merge the positive and negative datasets
-        merged_dataset = concatenate_datasets([positive_ready_dataset, negative_ready_dataset])
+        merged_dataset: HuggingFaceDataset = concatenate_datasets([positive_ready_dataset, negative_ready_dataset])
 
         if output_path is not None:
             merged_dataset.to_csv(output_path, index=False)

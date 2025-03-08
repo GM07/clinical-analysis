@@ -10,13 +10,12 @@ class MedNLI:
         self.train_file_path = os.path.join(path, train_file_relative_path)
 
         self.load()
-        self.prepare()
 
     def load(self):
         self.raw_data = pd.read_json(self.train_file_path, lines=True)
         return self.raw_data
 
-    def prepare(self):
+    def generate_prompts(self):
         # Remove all columns except, sentence1, sentence2, gold_label and pairID
         self.data = self.raw_data[['sentence1', 'sentence2', 'gold_label', 'pairID']]
 

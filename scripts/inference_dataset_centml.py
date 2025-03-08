@@ -19,7 +19,7 @@ parser.add_argument('--dataset', type=str, help='Path to dataset (csv)')
 parser.add_argument('--api_key', type=str, help='API key')
 parser.add_argument('--output_path', type=str, help='Path where the output dataset will be saved')
 parser.add_argument('--max_rows_to_process', type=int, default=25000, help='Maximum number of rows to process')
-parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
+parser.add_argument('--batch_size', type=int, default=100, help='Batch size')
 
 async def main():
 

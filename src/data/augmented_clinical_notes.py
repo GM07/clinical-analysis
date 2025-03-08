@@ -438,7 +438,7 @@ class AugmentedClinicalNotes(SyntheticDataset):
         """
         Filter the dataset to remove invalid extraction summaries. Invalid summaries are samples where the summary is not valid JSON.
         """
-        self.data = self.data.filter(lambda x: valid_json(x['summary']))
+        self.data = self.data.filter(lambda x: valid_json(x['summary']), desc="Filtering invalid extraction summaries")
         return self.data
 
     def extract_information_from_summaries(self):
@@ -458,7 +458,7 @@ class AugmentedClinicalNotes(SyntheticDataset):
 
         
         """
-        self.data = self.data.map(self._extract_information_from_row)
+        self.data = self.data.map(self._extract_information_from_row, desc="Extracting information from summaries")
         return self.data
 
     def scatter_extractions(self):
@@ -469,7 +469,8 @@ class AugmentedClinicalNotes(SyntheticDataset):
             self._scatter_extractions_from_row,
             batched=True,
             batch_size=1,
-            remove_columns=self.data.column_names # Remove original columns
+            remove_columns=self.data.column_names, # Remove original columns
+            desc="Scattering extractions"
         ).flatten()
         return self.data
 
@@ -477,7 +478,7 @@ class AugmentedClinicalNotes(SyntheticDataset):
         """
         Generate positive samples from the dataset.
         """
-        self.data = self.data.map(self._generate_positive_sample_from_row)
+        self.data = self.data.map(self._generate_positive_sample_from_row, desc="Generating positive samples")
         return self.data
 
     def generate_negative_samples(self):
@@ -485,17 +486,17 @@ class AugmentedClinicalNotes(SyntheticDataset):
         Generate negative samples from the dataset.
         """
 
-        logger.info("Generating negative samples")
         self.data = self.data.map(
             self._generate_negative_samples_from_row, 
             batched=True, 
             batch_size=1, 
+            desc="Generating negative samples"
             # with_indices=True
         )
 
         return self.data
 
-    def generate_prompts(self, output_path: str, max_rows: int = 25000):
+    def generate_prompts(self, output_path: str, max_rows: int = None):
         """
         Prepares the dataset by filtering invalid extraction summaries, extracting information from summaries, and scattering extractions.
 
@@ -527,8 +528,10 @@ class AugmentedClinicalNotes(SyntheticDataset):
         self.generate_negative_samples()
         logger.info(f"Generated negative samples : {initial_len} -> {len(self.data)}")
 
-        self.data = self.data.shuffle() # Make sure all extractions are not linked to the same notes
-        self.data = self.data.select(range(max_rows))
+        self.data = self.data.shuffle(seed=42) # Make sure all extractions are not linked to the same notes
+        
+        if max_rows is not None:
+            self.data = self.data.select(range(max_rows))
 
         self.save(output_path)
 

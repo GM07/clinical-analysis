@@ -1,7 +1,8 @@
+from typing import List
 import uuid
 from src.data.dataset import VerbalizedExtractionDataset
 
-from datasets import Dataset as HuggingFaceDataset
+from datasets import Dataset as HuggingFaceDataset, concatenate_datasets
 import pandas as pd
 
 class HumanEvaluation:
@@ -53,10 +54,66 @@ class HumanEvaluation:
 
         self.id_to_notes = self.dataset.groupby('HADM_ID')['TEXT'].aggregate(admission_to_prompt)
 
+    def from_datasets(
+        self, 
+        verbalized_datasets_paths: List[str], 
+        verbalized_columns: List[str], 
+        baseline_datasets_paths: List[str], 
+        output_path: str = None, 
+        max_samples_per_dataset: int = 10,
+        verbalized_methods: List[str] = None,
+        baseline_methods: List[str] = None
+    ):
+        """
+        Converts a list of verbalized datasets and a list of baseline datasets to a human evaluation dataset
+
+        Args:
+            verbalized_datasets_paths: List of paths to the verbalized datasets
+            verbalized_columns: List of columns to use from the verbalized datasets
+            baseline_datasets_paths: List of paths to the baseline datasets
+            output_path: Path to save the dataset
+            max_samples_per_dataset: Maximum number of samples to convert per dataset
+            verbalized_methods: List of methods to use for the verbalized datasets (must be same length as verbalized_datasets_paths)
+            baseline_methods: List of methods to use for the baseline datasets (must be same length as baseline_datasets_paths)
+        """
+
+        datasets = []
+        
+        if verbalized_methods is None:
+            verbalized_methods = [''] * len(verbalized_datasets_paths)
+        else:
+            assert len(verbalized_methods) == len(verbalized_datasets_paths), 'verbalized_methods must be the same length as verbalized_datasets_paths'
+
+        if baseline_methods is None:
+            baseline_methods = [''] * len(baseline_datasets_paths)
+        else:
+            assert len(baseline_methods) == len(baseline_datasets_paths), 'baseline_methods must be the same length as baseline_datasets_paths'
+
+        for verbalized_dataset_path, method in zip(verbalized_datasets_paths, verbalized_methods):
+            dataset = self.from_verbalized_dataset(verbalized_dataset_path, verbalized_columns, method=method, output_path=None, max_samples=max_samples_per_dataset)
+            datasets.append(dataset)
+
+        for baseline_dataset_path, method in zip(baseline_datasets_paths, baseline_methods):
+            dataset = self.from_baseline_dataset(baseline_dataset_path, method=method, output_path=None, max_samples=max_samples_per_dataset)
+            datasets.append(dataset)
+
+        final_dataset = concatenate_datasets(datasets)
+        final_dataset = final_dataset.map(lambda x: {'length': len(x['summary'])}).filter(lambda x: x['length'] > 200)
+        final_dataset = final_dataset.remove_columns(['length'])
+        final_dataset: HuggingFaceDataset = final_dataset.shuffle(seed=42)
+
+
+        if output_path:
+            final_dataset.to_csv(output_path)
+
+        ready_for_evaluation = final_dataset.remove_columns(['method', 'hadm_id'])
+
+        return final_dataset, ready_for_evaluation
+
     def from_verbalized_dataset(
         self, 
         dataset_path: str, 
-        columns: list[str],
+        columns: List[str],
         method: str, 
         output_path: str = None, 
         max_samples: int = 10
@@ -75,21 +132,20 @@ class HumanEvaluation:
         # Trick to prevent loading the dataset since we only want the processing on the columns
         col_to_domains = dict(zip(columns, map(lambda x: '_'.join(x.split('_')[1:-1]), columns)))
         domains_to_col = dict(zip(map(lambda x: '_'.join(x.split('_')[1:-1]), columns), columns))
-        dataset = HuggingFaceDataset.from_csv(dataset_path)
-        # verbalized_dataset = VerbalizedExtractionDataset(columns=columns, data=None) 
 
-        for column in columns:
-            assert VerbalizedExtractionDataset.valid_verbalized_column(column), f'The column "{column}" is not a valid column. It should be of a valid VerbalizedExtractionDataset input column'
-            assert column in dataset.column_names, f'The column "{column}" is not present in the dataset'
+        dataset = VerbalizedExtractionDataset(columns=columns, dataset_path=dataset_path)
+        data = dataset.filter_non_valid_generations()
+
+        dataset = HuggingFaceDataset.from_pandas(data)
 
         def to_format(x):
             nb_new_samples = len(domains_to_col)
-            hadm_id = x['HADM_ID']
+            hadm_id = x['HADM_ID'][0]
             return {
                 'id': [str(uuid.uuid4()) for _ in range(nb_new_samples)],
                 'hadm_id': [hadm_id] * nb_new_samples,
                 'clinical_notes': [self.id_to_notes[hadm_id]] * nb_new_samples,
-                'summary': [x[col] for col in columns],
+                'summary': [x[col][0] for col in columns],
                 'expected_domain': [col_to_domains[col] for col in columns],
                 'method': [method] * nb_new_samples,
                 'relevance': [0] * nb_new_samples,
@@ -100,7 +156,8 @@ class HumanEvaluation:
             }
 
         dataset = dataset.map(to_format, batched=True, batch_size=1, desc='Converting to human evaluation format', remove_columns=dataset.column_names)
-        # dataset = dataset.shuffle(seed=42)
+        dataset = dataset.filter(lambda x: x['summary'] is not None, desc='Filtering out empty summaries')
+        dataset = dataset.shuffle(seed=42)
         dataset = dataset.select(range(max_samples))
 
         if output_path:

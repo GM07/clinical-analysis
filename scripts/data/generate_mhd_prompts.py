@@ -6,7 +6,9 @@ import pandas as pd
 from src.data.dataset import Dataset
 from src.data.augmented_clinical_notes import AugmentedClinicalNotes
 from src.data.medmcqa import MedMCQA
+from src.data.mednli import MedNLI
 from src.data.medqa import MedQA
+from src.data.sumpubmed import SumPubMed
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,14 +23,16 @@ parser = ArgumentParser(description='Program that generates prompts from a datas
 parser.add_argument('--dataset_path', type=str, required=True, help='Path to dataset that is used to generate MHD')
 parser.add_argument('--dataset', type=str, required=True, help='Type of dataset that is used to generate MHD (options: MedQA, MedMCQA, AugmentedClinicalNotes)')
 parser.add_argument('--out', type=str, required=True, help='Output path where the prompts will be saved')
-parser.add_argument('--partition', type=bool, required=False, default=True, help='If True, the prompts will be saved in a partition file')
+parser.add_argument('--partition', type=bool, required=False, default=False, help='If True, the prompts will be saved in a partition file')
 parser.add_argument('--size', type=int, required=False, default=1000, help='Size of a partition')
 parser.add_argument('--partition_out', type=str, required=False, default=None, help='Output path where the partitioned prompts will be saved')
 
 DATASET_CLASSES = {
     'MedQA': MedQA,
     'MedMCQA': MedMCQA,
-    'AugmentedClinicalNotes': AugmentedClinicalNotes
+    'AugmentedClinicalNotes': AugmentedClinicalNotes,
+    'MedNLI': MedNLI,
+    'SumPubmed': SumPubMed
 }
 
 def main():
@@ -36,7 +40,7 @@ def main():
 
     print('Script called with args : ', args)
 
-    assert args.dataset in DATASET_CLASSES, f'Dataset {args.dataset} not found'
+    assert args.dataset in DATASET_CLASSES, f'Dataset {args.dataset} not found in list of available datasets : {DATASET_CLASSES.keys()}'
 
     if args.partition:
         assert args.partition_out is not None, 'Partition output path is required'

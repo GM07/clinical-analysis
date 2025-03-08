@@ -50,7 +50,10 @@ class SumPubMed(SyntheticDataset):
         self.data = concatenate_datasets([self.positive_data, self.negative_data])
 
         if output_path is not None:
-            self.data.to_csv(output_path, index=False)
+            positive_path = output_path.replace('.csv', '_positive.csv')
+            negative_path = output_path.replace('.csv', '_negative.csv')
+            self.positive_data.to_csv(positive_path, index=False)
+            self.negative_data.to_csv(negative_path, index=False)
 
         return self.data
 

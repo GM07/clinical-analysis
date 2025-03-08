@@ -166,7 +166,7 @@ class PrometheusResultDataset(Dataset):
     """
     Dataset format used to store prometheus results
     """
-    REQUIRED_COLUMNS = ['a', 'b', 'TEXT', 'concept', 'a_result', 'b_result', 'prompt', 'result']
+    REQUIRED_COLUMNS = ['a', 'b', 'concept', 'a_result', 'b_result', 'result']
     
     def __init__(self, dataset_path: str):
         super().__init__(dataset_path)

@@ -6,7 +6,8 @@ import requests
 from typing import Callable, List
 from tqdm import tqdm
 
-from vllm import LLM, SamplingParams
+if 'vllm' in sys.modules:
+    from vllm import LLM, SamplingParams
 
 from src.data.dataset import DatasetPartition
 from datasets import Dataset as HuggingFaceDataset
@@ -166,7 +167,6 @@ class DatasetInferencePipeline(InferencePipeline):
     def apply_chat_template(self, inputs):
         raise NotImplementedError('The apply_chat_template method not implemented by the subclass. If this function\
                                   does not need to be implemented, specify a rows_to_chat callable when calling the pipeline.')
-        pass
 
 class ModelDatasetInferencePipeline(DatasetInferencePipeline, ModelInferencePipeline):
     """
@@ -362,8 +362,8 @@ class ProviderDatasetInferencePipeline(DatasetInferencePipeline):
                     
                     # Log progress periodically
                     global_idx = batch_idx + start_idx
-                    if global_idx % 100 == 0:
-                        logging.info(f"Processed {global_idx}/{len(inputs) + start_idx} inputs")
+                    # if global_idx % 100 == 0:
+                        # logging.info(f"Processed {global_idx}/{len(inputs) + start_idx} inputs")
                     
                 except Exception as e:
                     retries += 1
