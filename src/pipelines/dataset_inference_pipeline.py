@@ -73,6 +73,8 @@ class DatasetInferencePipeline(InferencePipeline):
         input_column: str = 'input', 
         output_column: str = 'output',
         max_new_tokens: int = 128, 
+        max_rows_to_process: int = None,
+        batch_size: int = 8,
         apply_chat_template: bool = True, 
         rows_to_chat: Callable = None,
         saving_path: str = None
@@ -90,8 +92,24 @@ class DatasetInferencePipeline(InferencePipeline):
             On message is expected per row. This is useful if the chat template needs to be created from multiple columns (few-shot, etc).
             saving_path: Path to save the results to. If None, the results are not saved.
         """
-        results = []
+        # Initialize results list with None values
+        results = [None] * len(dataset)
         assert input_column in dataset.column_names, f'The input column "{input_column}" is not in the dataset'
+        start_idx = 0
+
+        # If output column exists, find first None value to resume from
+        if output_column in dataset.column_names:
+            logger.info(f"Found existing column '{output_column}' in dataset")
+            existing_results = dataset[output_column]
+            for i, result in enumerate(existing_results):
+                if result is not None:
+                    results[i] = result
+                else:
+                    start_idx = i
+                    break
+        
+
+        print(f"Resuming from index {start_idx}")
 
         inputs = self.get_chats(
             dataset, 
@@ -101,12 +119,35 @@ class DatasetInferencePipeline(InferencePipeline):
             rows_to_chat=rows_to_chat
         )
 
-        output = self.run_inference(inputs, max_new_tokens=max_new_tokens)
-        results.extend(output)
+        # Only process inputs starting from start_idx
+        if start_idx < len(inputs):
+            output = self.run_inference(
+                inputs[start_idx:], 
+                max_new_tokens=max_new_tokens, 
+                start_idx=start_idx,
+                max_rows_to_process=max_rows_to_process,
+                batch_size=batch_size
+            )
+            
+            # Update results list with new outputs
+            for i, result in enumerate(output, start=start_idx):
+                results[i] = result
 
-        output_column = output_column if output_column is not None else self.output_column
-        dataset = dataset.add_column(output_column, results)
-        # dataset = dataset.remove_columns(f'{input_column}_tmp')
+            # Save intermediate results
+            if output_column in dataset.column_names:
+                dataset = dataset.remove_columns(output_column)
+            dataset = dataset.add_column(output_column, results)
+
+            if f'{input_column}_tmp' in dataset.column_names:
+                dataset = dataset.remove_columns(f'{input_column}_tmp')
+
+
+        # output = self.run_inference(inputs, max_new_tokens=max_new_tokens)
+        # results.extend(output)
+
+        # output_column = output_column if output_column is not None else self.output_column
+        # dataset = dataset.add_column(output_column, results)
+        # # dataset = dataset.remove_columns(f'{input_column}_tmp')
 
         if saving_path is not None:
             dataset.to_csv(saving_path, index=False)
