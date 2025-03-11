@@ -6,6 +6,10 @@ import nltk.translate.bleu_score
 
 from src.data.augmented_clinical_notes import AugmentedClinicalNotes
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 class MedHal:
 
     """
@@ -27,6 +31,9 @@ class MedHal:
 
     @staticmethod
     def filter_multiple_sentence_statements(x):
+        if x['statement'] == 'None':
+            return False
+
         sentences = nltk.sent_tokenize(x['statement'])
         return len(sentences) == 1
 
@@ -41,10 +48,15 @@ class MedHal:
         output_path: str = None
     ):
 
+        logger.info(f"Processing ACM dataset from {acm_path}")
         acm_dataset = MedHal.from_augmented_clinical_notes(acm_path)
+        logger.info(f"Processing MedMCQA dataset from {medmcqa_path}")
         medmcqa_dataset = MedHal.from_medmcqa(medmcqa_path)
+        logger.info(f"Processing MedQA dataset from {medqa_path}")
         medqa_dataset = MedHal.from_medqa(medqa_path)
+        logger.info(f"Processing MedNLI dataset from {mednli_path}")
         mednli_dataset = MedHal.from_mednli(mednli_path)
+        logger.info(f"Processing Splitted SumPubMed dataset from {sumpubmed_positive_path} and {sumpubmed_negative_path}")
         splitted_sumpubmed_dataset = MedHal.from_splitted_sumpubmed(sumpubmed_positive_path, sumpubmed_negative_path)
 
         assert set(acm_dataset.column_names) == set(medmcqa_dataset.column_names) == set(medqa_dataset.column_names) == set(splitted_sumpubmed_dataset.column_names), \
@@ -98,6 +110,19 @@ class MedHal:
         return dataset
 
     @staticmethod
+    def augmented_clinical_notes_none_samples():
+        return {
+            'id': ['None', 'None'],
+            'context': ['None', 'None'],
+            'statement': ['None', 'None'],
+            'label': [False, False],
+            'explanation': ['None', 'None'],
+            'inner_id': ['None', 'None'],
+            'source': ['None', 'None'],
+            'synthetic': [None, None]
+        }
+    
+    @staticmethod
     def from_augmented_clinical_notes(path: str, output_path: str = None, llm_output_column: str = 'output'):
         """
         Constructs the MedHal dataset from a processed augmented clinical notes dataset.
@@ -110,10 +135,18 @@ class MedHal:
         dataset = HuggingFaceDataset.from_csv(path)
         
         def transform_acm_to_medhal(x):
+            if x[llm_output_column][0] == None or x[llm_output_column][1] == None:
+                return MedHal.augmented_clinical_notes_none_samples()
 
-            assert x['factual'][0] and not x['factual'][1], "The first sample must be correct and the second one must be incorrect"
-            assert x['idx'][0] == x['idx'][1], "The first sample must be before the second one"
-            assert x['concept'][0] == x['concept'][1], "The first sample must be before the second one"
+            consecutive_samples = (x['factual'][0] and not x['factual'][1]) or (not x['factual'][0] and x['factual'][1])
+            if not consecutive_samples:
+                return MedHal.augmented_clinical_notes_none_samples()
+
+            if x['idx'][0] != x['idx'][1]:
+                return MedHal.augmented_clinical_notes_none_samples()
+
+            if x['concept'][0] != x['concept'][1]:
+                return MedHal.augmented_clinical_notes_none_samples()
 
             if x['concept'][0] == 'sex':
                 factual_statement, hallucinated_statement = AugmentedClinicalNotes.fix_sex_generations(x[llm_output_column][0], x[llm_output_column][1])
@@ -135,6 +168,14 @@ class MedHal:
                 'source': ['acm'] * len(x['idx']),
                 'synthetic': [True, False]
             }
+        
+        dataset = dataset.sort(['idx', 'key_path'])
+        dataset = dataset.filter(
+            lambda x: [True, True] if x[llm_output_column][0] != None and x[llm_output_column][1] != None else [False, False], 
+            desc="Filtering None samples",
+            batch_size=2,
+            batched=True
+        )
         
         dataset = dataset.map(
             transform_acm_to_medhal,
@@ -166,6 +207,18 @@ class MedHal:
         
         def transform_medmcqa_to_medhal(x):
 
+            if x[llm_output_column][0] == 'None' or x[llm_output_column][1] == 'None':
+                return {
+                    'id': [None, None],
+                    'context': [None, None],
+                    'statement': [None, None],
+                    'label': [None, None],
+                    'explanation': [None, None],
+                    'inner_id': [None, None],
+                    'source': [None, None],
+                    'synthetic': [None, None]
+                }
+
             assert x['is_correct'][0] and not x['is_correct'][1], "The first sample must be correct and the second one must be incorrect"
             assert x['id'][0] == x['id'][1], "The first sample must be before the second one"
 
@@ -191,6 +244,9 @@ class MedHal:
                 'synthetic': [True] * len(x['id'])
             }
         
+        dataset = dataset.filter(lambda x: x[llm_output_column] != None, desc="Filtering None samples")
+        dataset = dataset.sort(['id'])
+
         dataset = dataset.map(
             transform_medmcqa_to_medhal, 
             desc="Transforming MedMCQA to MedHal",

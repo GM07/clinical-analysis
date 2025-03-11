@@ -528,7 +528,7 @@ class AugmentedClinicalNotes(SyntheticDataset):
         self.generate_negative_samples()
         logger.info(f"Generated negative samples : {initial_len} -> {len(self.data)}")
 
-        self.data = self.data.shuffle(seed=42) # Make sure all extractions are not linked to the same notes
+        # self.data = self.data.shuffle(seed=42) # Make sure all extractions are not linked to the same notes
         
         if max_rows is not None:
             self.data = self.data.select(range(max_rows))

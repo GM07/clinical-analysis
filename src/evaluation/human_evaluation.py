@@ -1,9 +1,12 @@
+import logging
 from typing import List
 import uuid
 from src.data.dataset import VerbalizedExtractionDataset
 
 from datasets import Dataset as HuggingFaceDataset, concatenate_datasets
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 class HumanEvaluation:
 
@@ -89,16 +92,18 @@ class HumanEvaluation:
         else:
             assert len(baseline_methods) == len(baseline_datasets_paths), 'baseline_methods must be the same length as baseline_datasets_paths'
 
+        logger.info(f'Converting {len(verbalized_datasets_paths)} verbalized datasets')
         for verbalized_dataset_path, method in zip(verbalized_datasets_paths, verbalized_methods):
             dataset = self.from_verbalized_dataset(verbalized_dataset_path, verbalized_columns, method=method, output_path=None, max_samples=max_samples_per_dataset)
             datasets.append(dataset)
 
+        logger.info(f'Converting {len(baseline_datasets_paths)} baseline datasets')
         for baseline_dataset_path, method in zip(baseline_datasets_paths, baseline_methods):
             dataset = self.from_baseline_dataset(baseline_dataset_path, method=method, output_path=None, max_samples=max_samples_per_dataset)
             datasets.append(dataset)
 
         final_dataset = concatenate_datasets(datasets)
-        final_dataset = final_dataset.map(lambda x: {'length': len(x['summary'])}).filter(lambda x: x['length'] > 200)
+        final_dataset = final_dataset.map(lambda x: {'length': len(x['summary'])}).filter(lambda x: x['length'] > 50)
         final_dataset = final_dataset.remove_columns(['length'])
         final_dataset: HuggingFaceDataset = final_dataset.shuffle(seed=42)
 
@@ -185,8 +190,7 @@ class HumanEvaluation:
         """
 
         dataset = HuggingFaceDataset.from_csv(dataset_path)
-        dataset = dataset.filter(lambda x: 'there is' not in x[summary_column_name])
-
+        dataset = dataset.filter(lambda x: x[summary_column_name] is not None and 'there is' not in x[summary_column_name])
         def to_format(x):
             nb_samples = len(x['HADM_ID'])
             return {
@@ -211,6 +215,3 @@ class HumanEvaluation:
             dataset.to_csv(output_path)
 
         return dataset
-
-    def from_dataset(self, dataset_path: str, output_path: str):
-        pass
