@@ -77,7 +77,8 @@ class DatasetInferencePipeline(InferencePipeline):
         batch_size: int = 8,
         apply_chat_template: bool = True, 
         rows_to_chat: Callable = None,
-        saving_path: str = None
+        saving_path: str = None,
+        system_prompt: str = None
     ):
         """
         Executes an inference pipeline on a dataset
@@ -116,7 +117,8 @@ class DatasetInferencePipeline(InferencePipeline):
             input_column=input_column, 
             tmp_column=f'{input_column}_tmp', 
             apply_chat_template=apply_chat_template, 
-            rows_to_chat=rows_to_chat
+            rows_to_chat=rows_to_chat,
+            system_prompt=system_prompt
         )
 
         # Only process inputs starting from start_idx
@@ -154,7 +156,7 @@ class DatasetInferencePipeline(InferencePipeline):
 
         return dataset
 
-    def get_chats(self, dataset: HuggingFaceDataset, input_column: str = 'input', tmp_column: str = 'input_tmp', apply_chat_template: bool = True, rows_to_chat: Callable = None):
+    def get_chats(self, dataset: HuggingFaceDataset, input_column: str = 'input', tmp_column: str = 'input_tmp', apply_chat_template: bool = True, rows_to_chat: Callable = None, system_prompt: str = None):
         """
         Gets the chats that needs to be sent to the LLM from the dataset
 
@@ -164,6 +166,7 @@ class DatasetInferencePipeline(InferencePipeline):
             tmp_column: Column to store the temporary chats
             apply_chat_template: Whether to apply the chat template to the input
             rows_to_chat: Function to convert rows to a chat. The function should take multiple rows and return a list of messages that can be sent to the LLM.
+            system_prompt: System prompt to use for the inference (only used if apply_chat_template is True and rows_to_chat is None)
         """
         if rows_to_chat is not None:
             # A function was given that converts rows to a chat. Apply it to the dataset and the output of this 
@@ -175,14 +178,14 @@ class DatasetInferencePipeline(InferencePipeline):
         else:
             if apply_chat_template:
                 # The input column is a prompt. Convert it to a chat template
-                dataset = dataset.add_column(tmp_column, self.apply_chat_template_dataset(dataset, input_column, tmp_column))
+                dataset = dataset.add_column(tmp_column, self.apply_chat_template_dataset(dataset, input_column, tmp_column, system_prompt))
             else:
                 # The input column already contains the chat template
                 tmp_column = input_column
 
         return dataset[tmp_column]
 
-    def apply_chat_template_dataset(self, dataset: HuggingFaceDataset, column: list[str] = None, output_column: str = 'tmp'):
+    def apply_chat_template_dataset(self, dataset: HuggingFaceDataset, column: list[str] = None, output_column: str = 'tmp', system_prompt: str = None):
         """
         Applies the chat template to a column of the dataset. New column is added to the dataset.
 
@@ -198,10 +201,11 @@ class DatasetInferencePipeline(InferencePipeline):
             inputs = data[column]
 
             if isinstance(inputs[0], str):
-                inputs = list(map(lambda x: [{'role': 'user', 'content': x}], inputs))
+                inputs = [[{'role': 'user', 'content': x}] if system_prompt is None \
+                          else [{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': x}] for x in inputs]
 
             return {output_column: self.apply_chat_template(inputs)}
-        dataset = dataset.map(apply_chat_template_for_row, batched=True)
+        dataset = dataset.map(apply_chat_template_for_row, batched=True, desc='Applying chat template')
         return dataset[output_column]
     
     @abstractmethod
@@ -268,7 +272,8 @@ class ProviderDatasetInferencePipeline(DatasetInferencePipeline):
         max_rows_to_process: int = None,
         rows_to_chat: Callable = None,
         batch_size: int = 8,
-        saving_path: str = None
+        saving_path: str = None,
+        system_prompt: str = None
     ):
         """
         Executes the pipeline on the dataset
@@ -283,6 +288,7 @@ class ProviderDatasetInferencePipeline(DatasetInferencePipeline):
             rows_to_chat: Function to convert rows to a chat. The function should take multiple rows and return a list of messages that can be sent to the LLM.
             batch_size: Number of requests to batch together in a single API call
             saving_path: Path to save the results to. If None, the results are not saved.
+            system_prompt: System prompt to use for the inference (only used if apply_chat_template is True and rows_to_chat is None)
         """
         if rows_to_chat is None:
             assert input_column in dataset.column_names, f'The input column "{input_column}" is not in the dataset'
@@ -308,7 +314,8 @@ class ProviderDatasetInferencePipeline(DatasetInferencePipeline):
             dataset, input_column=input_column, 
             tmp_column=f'{input_column}_tmp', 
             apply_chat_template=apply_chat_template, 
-            rows_to_chat=rows_to_chat
+            rows_to_chat=rows_to_chat,
+            system_prompt=system_prompt
         )
 
         # Only process inputs starting from start_idx
@@ -345,13 +352,20 @@ class ProviderDatasetInferencePipeline(DatasetInferencePipeline):
         """
         pass
 
-    def prompt_to_chat(self, dataset: HuggingFaceDataset, input_column: str = 'input', tmp_column: str = 'tmp'):
+    def prompt_to_chat(self, dataset: HuggingFaceDataset, input_column: str = 'input', tmp_column: str = 'tmp', system_prompt: str = None):
         """
         Converts a prompt to a chat format
+
+        Args:
+            dataset: Dataset to convert the prompts to chat
+            input_column: Column to use for the input
+            tmp_column: Column to store the output
+            system_prompt: System prompt to use for the inference
         """
         def prompt_to_chat_for_row(data):
             prompts = data[input_column]
-            chats = list(map(lambda x: [{'role': 'user', 'content': x}], prompts))
+            chats = list(map(lambda x: [{'role': 'user', 'content': x}] if system_prompt is None \
+                             else [{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': x}], prompts))
             return {tmp_column: chats}
         dataset = dataset.map(prompt_to_chat_for_row, batched=True, desc='Converting prompts to chat conversations')
         return dataset[tmp_column]
