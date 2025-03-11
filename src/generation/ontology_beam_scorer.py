@@ -23,6 +23,7 @@ class GenerationInput:
     prompts: List[str] # Clinical note + Question
     clinical_notes: List[str] # Clinical note
     concept_ids: List[str] # Concept ids
+    system_prompt: str = None
 
 @dataclass
 class GenerationConfig:

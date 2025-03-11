@@ -42,7 +42,8 @@ class ExtractionPipeline(Pipeline):
         medcat_path: str,
         medcat_device: str = 'cuda',
         loading_config: LoadingConfig = LoadingConfig(),
-        tokenizer_path: str = None
+        tokenizer_path: str = None,
+        system_prompt: str = None
     ):
         """
         Args:
@@ -52,6 +53,7 @@ class ExtractionPipeline(Pipeline):
             medcat_path: Path to medcat annotator model
             medcat_device: Device used by the medcat annotator
             loading_config: Loading configuration used to load the model
+            system_prompt: System prompt used to generate the prompts
         """
         super().__init__()
 
@@ -62,6 +64,7 @@ class ExtractionPipeline(Pipeline):
         self.medcat_path = medcat_path
         self.medcat_device = medcat_device
         self.loading_config = loading_config
+        self.system_prompt = system_prompt
 
     def load(self):
         """
@@ -98,7 +101,8 @@ class DatasetExtractionPipeline(ExtractionPipeline):
         medcat_path: str,
         medcat_device: str = 'cuda',
         loading_config: LoadingConfig = LoadingConfig(),
-        tokenizer_path: str = None
+        tokenizer_path: str = None,
+        system_prompt: str = None
     ):
         """
         Args:
@@ -107,8 +111,9 @@ class DatasetExtractionPipeline(ExtractionPipeline):
             snomed_cache_path: Path to snomed cache file
             medcat_path: Path to medcat annotator model
             medcat_device: Device used by the medcat annotator
+            system_prompt: System prompt used to generate the prompts
         """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt)
 
     def load(self):
         """
@@ -150,6 +155,7 @@ class DatasetExtractionPipeline(ExtractionPipeline):
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
+            system_prompt=self.system_prompt
         )
 
         results = []
@@ -173,7 +179,8 @@ class DatasetExtractionPipeline(ExtractionPipeline):
             prompter = OntologyBasedPrompter(
                 snomed=self.snomed,
                 annotator=self.medcat,
-                dataset_mode=True
+                dataset_mode=True,
+                system_prompt=self.system_prompt
             )
 
             # Mapping from id of clinical note to list of prompts associated to each concept detected in the clinical note
@@ -196,11 +203,19 @@ class DatasetExtractionPipeline(ExtractionPipeline):
 
         return dataset
     def prompt_to_chat(self, prompt: str):
-        return [{
+        chat = []
+        if self.system_prompt is not None:
+            chat.append({
+                'role': 'system',
+                'content': self.system_prompt
+            })
+
+        chat.append({
             'role': 'user',
             'content': prompt
-        }]
+        })
 
+        return chat
 
 class ComparisonExtractionPipeline(ExtractionPipeline):
     """
@@ -217,7 +232,8 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
         medcat_path: str,
         medcat_device: str = 'cuda',
         loading_config: LoadingConfig = LoadingConfig(),
-        tokenizer_path: str = None
+        tokenizer_path: str = None,
+        system_prompt: str = None
     ):
         """
         Args:
@@ -228,7 +244,7 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
             medcat_device: Device used by the medcat annotator
             loading_config: Loading configuration used to load the model
         """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt)
 
     def __call__(self, clinical_note: str, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
         """
@@ -243,6 +259,7 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
+            system_prompt=self.system_prompt
         )
 
         normal_config = GenerationConfig.greedy_search()
@@ -287,7 +304,8 @@ class DatasetComparisonExtractionPipeline(ExtractionPipeline):
         medcat_path: str,
         medcat_device: str = 'cuda',
         loading_config: LoadingConfig = LoadingConfig(),
-        tokenizer_path: str = None
+        tokenizer_path: str = None,
+        system_prompt: str = None
     ):
         """
         Args:
@@ -298,7 +316,7 @@ class DatasetComparisonExtractionPipeline(ExtractionPipeline):
             medcat_device: Device used by the medcat annotator
             loading_config: Loading configuration used to load the model
         """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt)
 
 
     def __call__(self, dataset: HuggingFaceDataset, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
@@ -314,6 +332,7 @@ class DatasetComparisonExtractionPipeline(ExtractionPipeline):
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
+            system_prompt=self.system_prompt
         )
 
         normal_config = GenerationConfig.greedy_search()
@@ -364,7 +383,8 @@ class PartitionedComparisonExtractionPipeline(ExtractionPipeline):
         medcat_path: str,
         medcat_device: str = 'cuda',
         loading_config: LoadingConfig = LoadingConfig(),
-        tokenizer_path: str = None
+        tokenizer_path: str = None,
+        system_prompt: str = None
     ):
         """
         Args:
@@ -375,7 +395,7 @@ class PartitionedComparisonExtractionPipeline(ExtractionPipeline):
             medcat_device: Device used by the medcat annotator
             loading_config: Loading configuration used to load the model
         """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt)
 
     def __call__(self, partition: DatasetPartition, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
         """
@@ -390,6 +410,7 @@ class PartitionedComparisonExtractionPipeline(ExtractionPipeline):
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
+            system_prompt=self.system_prompt
         )
 
         normal_config = GenerationConfig.greedy_search()
@@ -405,7 +426,6 @@ class PartitionedComparisonExtractionPipeline(ExtractionPipeline):
                 batch_size=extraction_config.batch_size,
                 generation_config=normal_config
             )
-            # print('normal : ', normal_attr_by_id)
 
             beam_attr_by_id = prompter.start_multiple(
                 clinical_notes=[clinical_note],
@@ -414,16 +434,12 @@ class PartitionedComparisonExtractionPipeline(ExtractionPipeline):
                 generation_config=beam_config
             )
 
-            # print('beam : ', beam_attr_by_id)
-
             constrained_attr_by_id = prompter.start_multiple(
                 clinical_notes=[clinical_note],
                 top_n=extraction_config.nb_concepts,
                 batch_size=extraction_config.batch_size,
                 generation_config=constrained_config
             )
-
-            # print('constrained : ', constrained_attr_by_id)
 
             results.append((i, (normal_attr_by_id, beam_attr_by_id, constrained_attr_by_id)))
 
@@ -450,7 +466,8 @@ class PartitionedExtractionPipeline(ExtractionPipeline):
         medcat_path: str,
         medcat_device: str = 'cuda',
         loading_config: LoadingConfig = LoadingConfig(),
-        tokenizer_path: str = None
+        tokenizer_path: str = None,
+        system_prompt: str = None
     ):
         """
         Args:
@@ -460,7 +477,7 @@ class PartitionedExtractionPipeline(ExtractionPipeline):
             medcat_path: Path to medcat annotator model
             medcat_device: Device used by the medcat annotator
         """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt)
 
     def __call__(
         self, 
@@ -487,6 +504,7 @@ class PartitionedExtractionPipeline(ExtractionPipeline):
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
+            system_prompt=self.system_prompt
         )
 
         results = []

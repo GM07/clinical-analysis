@@ -1,5 +1,5 @@
-from typing import Dict, List
-from collections import Counter, defaultdict
+from typing import List
+from collections import defaultdict
 import logging
 import types
 
@@ -63,7 +63,7 @@ class OntologyConstrainedModel:
         self.model.generate = types.MethodType(custom_generate, self.model)
 
 
-    def prepare_model_inputs(self, prompts: List[str]):
+    def prepare_model_inputs(self, prompts: List[str], system_prompt: str = None):
         """
         Prepares a list of prompts to be sent to the model by applying the chat template and tokenizing the input
         
@@ -71,7 +71,7 @@ class OntologyConstrainedModel:
             prompts: List of prompts to send to the model
         """
         if self.apply_chat_template and self.tokenizer.chat_template is not None:
-            prompts = self.chat_template.batched_single_user_entry(prompts)
+            prompts = self.chat_template.batched_single_user_entry(prompts, system_entry=system_prompt)
         
         model_input = self.tokenizer(
             prompts, 
@@ -107,10 +107,7 @@ class OntologyConstrainedModel:
             generation_input: Object containing the prompts to send to the model
         """
 
-        if len(generation_input.prompts[0]) == 0:
-            logger.warning(f'The prompts sent to the model are empty')
-        
-        model_input = self.prepare_model_inputs(generation_input.prompts)
+        model_input = self.prepare_model_inputs(generation_input.prompts, system_prompt=generation_input.system_prompt)
         model_input['input_ids'] = model_input['input_ids'].to(self.get_device())
         model_input['attention_mask'] = model_input['attention_mask'].to(self.get_device())
 
@@ -138,7 +135,7 @@ class OntologyConstrainedModel:
 
     def group_beam_search(self, generation_input: GenerationInput, generation_config: GenerationConfig = GenerationConfig()):
 
-        tokenized_inputs = self.prepare_model_inputs(generation_input.prompts)
+        tokenized_inputs = self.prepare_model_inputs(generation_input.prompts, system_prompt=generation_input.system_prompt)
         input_ids = tokenized_inputs['input_ids'].to(self.get_device())
         attention_mask = tokenized_inputs['attention_mask'].to(self.get_device())
         hf_generation_config = HFGenerationConfig(
@@ -221,7 +218,8 @@ class OntologyBasedPrompter:
         annotator: Annotator, 
         constrained_model: OntologyConstrainedModel = None, 
         template: OntologyPromptTemplate = OntologyPromptTemplate(),
-        dataset_mode: bool = False
+        dataset_mode: bool = False,
+        system_prompt: str = None
     ):
         """
         Initializes an OntologyBasedPrompter object that handles the extraction of medical concepts from text.
@@ -232,6 +230,7 @@ class OntologyBasedPrompter:
             annotator: An Annotator instance for identifying medical concepts in text
             template: An OntologyPromptTemplate instance defining the prompt format (default: OntologyPromptTemplate())
             dataset_mode: Whether the prompt will be stored in a dataset instead of being sent to the model
+            system_prompt: System prompt used to generate the prompts
         """
         
         self.constrained_model = constrained_model
@@ -239,7 +238,7 @@ class OntologyBasedPrompter:
         self.annotator = annotator
         self.template = template
         self.dataset_mode = dataset_mode
-
+        self.system_prompt = system_prompt
         
         self.attributes_by_id = []
 
@@ -359,7 +358,7 @@ class OntologyBasedPrompter:
         prompts = self.create_prompts(clinical_note, concept_ids)
 
         # Generate answers
-        generation_input = GenerationInput(prompts=prompts, clinical_notes=[clinical_note] * len(prompts), concept_ids=concept_ids)
+        generation_input = GenerationInput(prompts=prompts, clinical_notes=[clinical_note] * len(prompts), concept_ids=concept_ids, system_prompt=self.system_prompt)
         answers = self.constrained_model.generate(generation_input, generation_config)
 
         self.store_extractions_from_generation(concept_ids, answers)
