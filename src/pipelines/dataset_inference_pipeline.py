@@ -6,8 +6,8 @@ import requests
 from typing import Callable, List
 from tqdm import tqdm
 
-if 'vllm' in sys.modules:
-    from vllm import LLM, SamplingParams
+# if 'vllm' in sys.modules:
+from vllm import LLM, SamplingParams
 
 from src.data.dataset import DatasetPartition
 from datasets import Dataset as HuggingFaceDataset
@@ -126,9 +126,9 @@ class DatasetInferencePipeline(InferencePipeline):
             output = self.run_inference(
                 inputs[start_idx:], 
                 max_new_tokens=max_new_tokens, 
-                start_idx=start_idx,
-                max_rows_to_process=max_rows_to_process,
-                batch_size=batch_size
+                # start_idx=start_idx,
+                # max_rows_to_process=max_rows_to_process,
+                # batch_size=batch_size
             )
             
             # Update results list with new outputs

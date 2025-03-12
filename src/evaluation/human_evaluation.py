@@ -8,6 +8,16 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+standard_domain_mapping = {
+    'ecg': 'ECG',
+    'ECG': 'ECG',
+    'physician_': 'Physician',
+    'Nursing': 'Nursing',
+    'nursing': 'Nursing',
+    'radiology': 'Radiology',
+    'Radiology': 'Radiology'
+}
+
 class HumanEvaluation:
 
     """
@@ -105,8 +115,9 @@ class HumanEvaluation:
         final_dataset = concatenate_datasets(datasets)
         final_dataset = final_dataset.map(lambda x: {'length': len(x['summary'])}).filter(lambda x: x['length'] > 50)
         final_dataset = final_dataset.remove_columns(['length'])
+        final_dataset = final_dataset.map(lambda x: {'expected_domain': standard_domain_mapping[x['expected_domain']]})
         final_dataset: HuggingFaceDataset = final_dataset.shuffle(seed=42)
-
+        
 
         if output_path:
             final_dataset.to_csv(output_path)

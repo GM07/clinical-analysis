@@ -30,6 +30,9 @@ def main():
     args = parser.parse_args()
     print('Called with arguments : ', args)
 
+    if args.system_prompt not in ['default', 'bio']:
+        raise ValueError('System prompt must be either default or bio')
+
     system_prompt = DEFAULT_SYSTEM_ENTRY if args.system_prompt == 'default' else LLAMA_BIO_SYSTEM_PROMPT
     print('Using system prompt : ', system_prompt)
 
