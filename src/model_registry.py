@@ -1,25 +1,19 @@
 from dataclasses import dataclass
 import os
 import logging
-from typing import List
+from typing import Dict, List, Union
 
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 import torch
+
 from vllm import LLM, SamplingParams
 
 from src.utils import run_inference, batch_elements
+from src.models.loading_config import LoadingConfig
 
 logger = logging.getLogger(__name__)
 
-@dataclass
-class LoadingConfig:
-    pad_equals_eos: bool = True
-    use_quantization: bool = False
-    quantization_config: BitsAndBytesConfig = None
-    bf16: bool = False
-    device_map = 'auto'
-    padding_side = 'left'
 
 @dataclass
 class ModelNames:
@@ -105,7 +99,7 @@ class ModelRegistry:
             if loading_config.quantization_config:
                 config = loading_config.quantization_config
             else:
-                compute_dtype = getattr(torch, "float16")
+                compute_dtype = getattr(torch, "bfloat16")
                 config = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_quant_type='nf4',
@@ -153,7 +147,7 @@ class ModelRegistry:
         return registry.load_checkpoint(checkpoint_id, loading_config=loading_config)
 
     @staticmethod
-    def load_single_tokenizer(checkpoint: str):
+    def load_single_tokenizer(checkpoint: str, loading_config: LoadingConfig = LoadingConfig()):
         """
         Loads a tokenizer
         Args:
@@ -162,16 +156,16 @@ class ModelRegistry:
         """
         local = os.path.exists(checkpoint)
         if local:
-            logger.info(f'Loading model locally from {checkpoint}')
+            logger.info(f'Loading tokenizer locally from {checkpoint}')
             checkpoint_id = os.path.basename(checkpoint)
         else:
-            logger.info(f'Fetching model from {checkpoint}')
+            logger.info(f'Fetching tokenizer from {checkpoint}')
             checkpoint_id = checkpoint
 
         local_folder_path = checkpoint.replace(checkpoint_id, '') if local else ''
 
         registry = ModelRegistry(local=local, local_folder_path=local_folder_path)
-        return registry.load_tokenizer(checkpoint_id)
+        return registry.load_tokenizer(checkpoint_id, loading_config=loading_config)
 
     @staticmethod
     def load_single_model(checkpoint: str, loading_config: LoadingConfig = LoadingConfig()):
