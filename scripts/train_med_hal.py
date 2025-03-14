@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 import logging
 
-from src.training.med_hal_trainer import MedHALTrainer
+from src.training.lora_trainer import LoRATrainer
 from src.model_registry import LoadingConfig
 
 logging.basicConfig(
@@ -25,7 +25,7 @@ def main():
 
     tokenizer_checkpoint = args.tokenizer_checkpoint if args.tokenizer_checkpoint else args.model_checkpoint
 
-    trainer = MedHALTrainer(
+    trainer = LoRATrainer(
         model_checkpoint=args.model_checkpoint, 
         tokenizer_checkpoint=tokenizer_checkpoint,
         dataset_path=args.dataset_path

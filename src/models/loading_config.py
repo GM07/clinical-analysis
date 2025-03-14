@@ -10,5 +10,5 @@ class LoadingConfig:
     quantization_config: BitsAndBytesConfig = None
     bf16: bool = True
     device_map: Union[str, Dict[int, str]] = 'auto'
-    padding_side: str = 'left',
+    padding_side: str = 'left'
     local_files_only: bool = True

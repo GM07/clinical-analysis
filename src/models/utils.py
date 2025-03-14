@@ -7,6 +7,14 @@ from src.models.loading_config import LoadingConfig
 
 logger = logging.getLogger(__name__)
 
+def get_4bit_quantization_config():
+    return BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type='nf4',
+        bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+        bnb_4bit_use_double_quant=False,
+    )
+
 def load_model(checkpoint, loading_config: LoadingConfig = LoadingConfig()):
     """
     Loads a model using a model name from the registry
@@ -24,13 +32,7 @@ def load_model(checkpoint, loading_config: LoadingConfig = LoadingConfig()):
         if loading_config.quantization_config:
             config = loading_config.quantization_config
         else:
-            compute_dtype = getattr(torch, "bfloat16")
-            config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type='nf4',
-                bnb_4bit_compute_dtype=compute_dtype,
-                bnb_4bit_use_double_quant=False,
-            )
+            config = get_4bit_quantization_config()
 
     return AutoModelForCausalLM.from_pretrained(
         checkpoint,
