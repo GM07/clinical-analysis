@@ -17,21 +17,23 @@ CONTEXT = """### Context
 MEDHAL_FORMAT_TRAINING_CONTEXT = TASK_DESCRIPTION + CONTEXT + """### Statement
 {statement}
 
+### Explanation
+{explanation}
+
 ### Factual
 {label}
 
-### Explanation
-{explanation}
 """
 
 MEDHAL_FORMAT_TRAINING_NO_CONTEXT = TASK_DESCRIPTION + """### Statement
 {statement}
 
+### Explanation
+{explanation}
+
 ### Factual
 {label}
 
-### Explanation
-{explanation}
 """
 
 MEDHAL_FORMAT_INFERENCE_CONTEXT = TASK_DESCRIPTION + CONTEXT + """### Statement
@@ -43,7 +45,7 @@ MEDHAL_FORMAT_INFERENCE_CONTEXT = TASK_DESCRIPTION + CONTEXT + """### Statement
 MEDHAL_FORMAT_INFERENCE_NO_CONTEXT = TASK_DESCRIPTION + """### Statement
 {statement}
 
-### Factual
+### Explanation
 """
 
 class Formatter:
@@ -54,9 +56,9 @@ class Formatter:
 
     def __call__(self, x) -> List[str]:
         if isinstance(x['context'], str):
-            return self.format_sample(x['context'], x['statement'], x['label'], x['explanation'])
+            return {'text': self.format_sample(x['context'], x['statement'], x['label'], x['explanation'])}
 
-        return self.format_batched_dict(x)
+        return {'text': self.format_batched_dict(x)}
 
     def format_batched_dict(self, samples: List[Dict[str, Any]]) -> List[str]:
 
