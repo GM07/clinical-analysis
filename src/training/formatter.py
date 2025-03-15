@@ -1,18 +1,20 @@
 from typing import Any, Dict, List
 from datasets import load_dataset
 
-TASK_DESCRIPTION = """### Task Description:
-You will be given a statement and you're role is to determine whether the statement is factual or not. 
-The statement can be based on a given context or not.
-In the factual section, you must respond with "YES" if the statement is factual and "NO" if it is not.
-Also generate an explanation for your answer stating why you think the statement is factual or not.
+TASK_DESCRIPTION = """### Task Description
+You will evaluate whether a medical statement is factually accurate.
+The statement may reference a provided context.
+Respond with "YES" if the statement is factually correct or "NO" if it contains inaccuracies.
+Provide a brief explanation justifying your determination, citing specific evidence or reasoning.
 
 """
 
-MEDHAL_FORMAT_WITH_CONTEXT = TASK_DESCRIPTION + """### Context
+CONTEXT = """### Context
 {context}
 
-### Statement
+"""
+
+MEDHAL_FORMAT_TRAINING_CONTEXT = TASK_DESCRIPTION + CONTEXT + """### Statement
 {statement}
 
 ### Factual
@@ -22,7 +24,7 @@ MEDHAL_FORMAT_WITH_CONTEXT = TASK_DESCRIPTION + """### Context
 {explanation}
 """
 
-MEDHAL_FORMAT_WITHOUT_CONTEXT = TASK_DESCRIPTION + """### Statement
+MEDHAL_FORMAT_TRAINING_NO_CONTEXT = TASK_DESCRIPTION + """### Statement
 {statement}
 
 ### Factual
@@ -30,21 +32,31 @@ MEDHAL_FORMAT_WITHOUT_CONTEXT = TASK_DESCRIPTION + """### Statement
 
 ### Explanation
 {explanation}
+"""
+
+MEDHAL_FORMAT_INFERENCE_CONTEXT = TASK_DESCRIPTION + CONTEXT + """### Statement
+{statement}
+
+### Factual
+"""
+
+MEDHAL_FORMAT_INFERENCE_NO_CONTEXT = TASK_DESCRIPTION + """### Statement
+{statement}
+
+### Factual
 """
 
 class Formatter:
 
-    def __call__(self, x: List[Dict[str, Any]]) -> List[str]:
-        if isinstance(x, Dict):
-            return self.format_dict(x)
+    def __init__(self, tokenizer, training=True):
+        self.tokenizer = tokenizer
+        self.training = training
+
+    def __call__(self, x) -> List[str]:
+        if isinstance(x['context'], str):
+            return self.format_sample(x['context'], x['statement'], x['label'], x['explanation'])
 
         return self.format_batched_dict(x)
-
-    def format_dict(self, x: Dict[str, Any]) -> str:
-        if x['context'] is not None and x['context'] != 'None' and x['context'] != '':
-            return MEDHAL_FORMAT_WITH_CONTEXT.format(context=x['context'], statement=x['statement'], label=x['label'], explanation=x['explanation'])
-        else:
-            return MEDHAL_FORMAT_WITHOUT_CONTEXT.format(statement=x['statement'], label=x['label'], explanation=x['explanation'])
 
     def format_batched_dict(self, samples: List[Dict[str, Any]]) -> List[str]:
 
@@ -52,12 +64,25 @@ class Formatter:
         for i in range(len(samples['statement'])):
             context = samples['context'][i]
             statement = samples['statement'][i]
-            label = 'YES' if samples['label'][i] else 'NO'
+            label = samples['label'][i]
             explanation = samples['explanation'][i]
-
-            if context is not None and context != 'None' and context != '':
-                output_texts.append(MEDHAL_FORMAT_WITH_CONTEXT.format(context=context, statement=statement, label=label, explanation=explanation))
-            else:
-                output_texts.append(MEDHAL_FORMAT_WITHOUT_CONTEXT.format(statement=statement, label=label, explanation=explanation))
+            output_texts.append(self.format_sample(context, statement, label, explanation))
 
         return output_texts
+
+
+    def format_sample(self, context, statement, label, explanation) -> str:
+
+        yes_no_label = 'YES' if label else 'NO'
+        
+        if self.training:
+            med_hal_format_context = MEDHAL_FORMAT_TRAINING_CONTEXT
+            med_hal_format_no_context = MEDHAL_FORMAT_TRAINING_NO_CONTEXT
+        else:
+            med_hal_format_context = MEDHAL_FORMAT_INFERENCE_CONTEXT
+            med_hal_format_no_context = MEDHAL_FORMAT_INFERENCE_NO_CONTEXT
+
+        if context is not None and context != 'None' and context != '':
+            return med_hal_format_context.format(context=context, statement=statement, label=yes_no_label, explanation=explanation) + self.tokenizer.eos_token
+        else:
+            return med_hal_format_no_context.format(statement=statement, label=yes_no_label, explanation=explanation) + self.tokenizer.eos_token
