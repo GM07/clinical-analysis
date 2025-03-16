@@ -5,6 +5,7 @@ notebooks/
 commands.md
 logs/
 .vscode/
+unsloth_compiled_cache/
 
 scratch/
 projects/

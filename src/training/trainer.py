@@ -6,7 +6,7 @@ import logging
 
 from src.models.loading_config import LoadingConfig
 from src.models.utils import load_model, load_tokenizer
-from src.training.formatter import Formatter
+from src.data.formatter import Formatter
 
 logger = logging.getLogger(__name__)
 
