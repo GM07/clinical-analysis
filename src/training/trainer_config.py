@@ -11,7 +11,8 @@ class CheckpointConfig:
         default=None,
         metadata={
             'help': 'The model checkpoint to use (required).',
-            'required': True
+            'required': True,
+            'is_path': True # Will allow dynamic expansion of the path (variables like $HOME can be used)
         }
     )
     load_in_4bit: bool = field(
@@ -46,51 +47,7 @@ class CheckpointConfig:
             'help': 'Whether to trust remote code (defaults to True).'
         }
     )
-    r: int = field(
-        default=64,
-        metadata={
-            'help': 'The rank of the LoRA layers (defaults to 16).'
-        }
-    )
-    lora_alpha: float = field(
-        default=16,
-        metadata={
-            'help': 'The alpha parameter for the LoRA layers (defaults to 16).'
-        }
-    )
 
-    lora_dropout: float = field(
-        default=0.0,
-        metadata={
-            'help': 'The dropout rate for the LoRA layers (defaults to 0.0).'
-        }
-    )
-    bias: str = field(
-        default="none",
-        metadata={
-            'help': 'The bias to use for the LoRA layers (defaults to "none").'
-        }
-    )
-    use_gradient_checkpointing: str | bool = field(
-        default='unsloth',
-        metadata={
-            'help': 'Whether to use gradient checkpointing (defaults to "unsloth").'
-        }
-    )
-    
-    random_state: int = field(
-        default=42,
-        metadata={
-            'help': 'The random state to use (defaults to 42).'
-        }
-    )
-
-    use_rsloss: bool = field(
-        default=False,
-        metadata={
-            'help': 'Whether to use Rank-Stablized LoRA (defaults to False).'
-        }
-    )
     
 @dataclass
 class DataConfig:
@@ -98,7 +55,8 @@ class DataConfig:
         default=None,
         metadata={
             'help': 'The path to the dataset (required).',
-            'required': True
+            'required': True,
+            'is_path': True
         }
     )
     train_split: str = field(
@@ -158,7 +116,7 @@ class TrainingConfig:
     )
 
     max_steps: int = field(
-        default=None,
+        default=-1,
         metadata={
             'help': 'The maximum number of steps to use (defaults to None). Will override num_train_epochs if set.'
         }
@@ -172,7 +130,7 @@ class TrainingConfig:
     )
 
     eval_steps: int = field(
-        default=10,
+        default=100,
         metadata={
             'help': 'The number of steps to evaluate the model (defaults to 10).'
         }
@@ -216,6 +174,66 @@ class TrainingConfig:
         default="outputs",
         metadata={
             'help': 'The output directory to use (defaults to "outputs").'
+        }
+    )
+
+    use_lora: bool = field(
+        default=False,
+        metadata={
+            'help': 'Whether to use LoRA (defaults to False).'
+        }
+    )
+
+    r: int = field(
+        default=64,
+        metadata={
+            'help': 'The rank of the LoRA layers (defaults to 16).'
+        }
+    )
+    lora_alpha: float = field(
+        default=16,
+        metadata={
+            'help': 'The alpha parameter for the LoRA layers (defaults to 16).'
+        }
+    )
+
+    lora_dropout: float = field(
+        default=0.0,
+        metadata={
+            'help': 'The dropout rate for the LoRA layers (defaults to 0.0).'
+        }
+    )
+    bias: str = field(
+        default="none",
+        metadata={
+            'help': 'The bias to use for the LoRA layers (defaults to "none").'
+        }
+    )
+    use_gradient_checkpointing: str | bool = field(
+        default='unsloth',
+        metadata={
+            'help': 'Whether to use gradient checkpointing (defaults to "unsloth").'
+        }
+    )
+    
+    random_state: int = field(
+        default=42,
+        metadata={
+            'help': 'The random state to use (defaults to 42).'
+        }
+    )
+
+    use_rslora: bool = field(
+        default=False,
+        metadata={
+            'help': 'Whether to use Rank-Stablized LoRA (defaults to False).'
+        }
+    )
+
+    loftq_bits: int | None = field(
+        default=None,
+        metadata={
+            'help': 'The number of bits to use for the LoFTQ (defaults to None).'
         }
     )
     

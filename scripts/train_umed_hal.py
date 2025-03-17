@@ -1,6 +1,6 @@
 import logging
 
-from src.training.med_hal_trainer import MedHalTrainer
+from src.training.umed_hal_trainer import UMedHalTrainer
 from src.training.trainer_config import TrainerConfig
 from src.training.trainer_config_parser import TrainerConfigParser
 
@@ -14,7 +14,7 @@ logging.basicConfig(
 def main():
     trainer_config = TrainerConfigParser().parse()
     print(trainer_config)
-    trainer = MedHalTrainer(trainer_config)
+    trainer = UMedHalTrainer(trainer_config)
     trainer.train()
 
 if __name__ == '__main__':

@@ -1,44 +1,66 @@
-import torch
-from datasets import load_from_disk
-from unsloth import FastLanguageModel, is_bfloat16_supported
-from trl import SFTTrainer
+import transformers
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers import TrainingArguments
-import logging
+from datasets import load_from_disk
+
+from trl import SFTTrainer, DataCollatorForCompletionOnlyLM, SFTConfig
+from peft import LoraConfig, LoftQConfig
 
 from src.data.formatter import Formatter
+from src.models.loading_config import LoadingConfig
+from src.models.utils import get_4bit_quantization_config, get_8bit_quantization_config, load_model, load_tokenizer
 from src.training.trainer_config import TrainerConfig
+
+import logging
 
 logger = logging.getLogger(__name__)
 
 class MedHalTrainer:
+
+    RESPONSE_TEMPLATE_CONTEXT = "\n### Factual\n"
 
     def __init__(self, trainer_config: TrainerConfig):
         self.trainer_config = trainer_config
         self.load_checkpoint()
 
     def load_checkpoint(self):
-        logger.info("Loading checkpoint")
+        logger.info(f"Loading checkpoint : {self.trainer_config.checkpoint_config.model_checkpoint}")
 
-        self.model, self.tokenizer = FastLanguageModel.from_pretrained(
+        use_quantization = self.trainer_config.checkpoint_config.load_in_4bit or self.trainer_config.checkpoint_config.load_in_8bit
+
+        if self.trainer_config.training_config.loftq_bits:
+            # Disable quantization when loading if LoFTQ is used
+            use_quantization = False
+
+        quantization_config = None
+        if self.trainer_config.checkpoint_config.load_in_4bit:
+            quantization_config = get_4bit_quantization_config()
+        elif self.trainer_config.checkpoint_config.load_in_8bit:
+            quantization_config = get_8bit_quantization_config()
+            
+        loading_config = LoadingConfig(
+            use_quantization=use_quantization,
+            quantization_config=quantization_config,
+            pad_equals_eos=False,
+            padding_side='right',
+        )
+
+        self.model: AutoModelForCausalLM = load_model(
             self.trainer_config.checkpoint_config.model_checkpoint,
-            max_seq_length=self.trainer_config.checkpoint_config.max_seq_len,
-            dtype=self.trainer_config.checkpoint_config.dtype,
-            load_in_4bit=self.trainer_config.checkpoint_config.load_in_4bit,
-            load_in_8bit=self.trainer_config.checkpoint_config.load_in_8bit,
-            trust_remote_code=self.trainer_config.checkpoint_config.trust_remote_code,
+            loading_config=loading_config,
         )
 
-        self.model = FastLanguageModel.get_peft_model(
-            self.model,
-            r = self.trainer_config.checkpoint_config.r,
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"] ,
-            lora_alpha=self.trainer_config.checkpoint_config.lora_alpha,
-            lora_dropout=self.trainer_config.checkpoint_config.lora_dropout,
-            bias=self.trainer_config.checkpoint_config.bias,
-            use_gradient_checkpointing=self.trainer_config.checkpoint_config.use_gradient_checkpointing,
-            random_state=self.trainer_config.checkpoint_config.random_state,
-            use_rslora=self.trainer_config.checkpoint_config.use_rsloss,
+        self.model.max_seq_length = self.trainer_config.checkpoint_config.max_seq_len
+
+        self.tokenizer: AutoTokenizer = load_tokenizer(
+            self.trainer_config.checkpoint_config.model_checkpoint,
+            loading_config=loading_config,
         )
+
+        if self.tokenizer.pad_token is None:
+            logger.warning("No pad token found, setting it to <finetune-pad-token>")
+            self.tokenizer.add_special_tokens({'pad_token': '<finetune-pad-token>'})
+            self.model.resize_token_embeddings(len(self.tokenizer))
 
     def _prepare_dataset(self):
         logger.info("Preparing dataset")
@@ -59,25 +81,72 @@ class MedHalTrainer:
         
         self.dataset = self.dataset.map(self.train_formatter, batched=True, num_proc=12)
         
+    def _prepare_collator(self):
+        logger.info("Preparing collator")
+
+        encoded_response_template = self.tokenizer.encode(
+            self.RESPONSE_TEMPLATE_CONTEXT, add_special_tokens=False
+        )
+
+        # Evaluate if the response template is present in the first and last examples
+        first_example = self.dataset['train'][0]["text"]
+        logger.info(f"Example formatted: {first_example}")
+        first_example_ids = self.tokenizer.encode(first_example, add_special_tokens=False)
+
+        assert self.RESPONSE_TEMPLATE_CONTEXT in first_example
+        assert encoded_response_template[0] in first_example_ids
+        assert encoded_response_template[-1] in first_example_ids
+
+        last_example = self.dataset['train'][-1]["text"]
+        last_example_ids = self.tokenizer.encode(last_example, add_special_tokens=False)
+
+        assert self.RESPONSE_TEMPLATE_CONTEXT in last_example
+        assert encoded_response_template[0] in last_example_ids
+        assert encoded_response_template[-1] in last_example_ids
+
+        self.data_collator = DataCollatorForCompletionOnlyLM(
+            response_template=encoded_response_template,
+            tokenizer=self.tokenizer,
+            mlm=False,
+        )
 
     def _prepare_training(self):
         logger.info("Preparing training")
+
+
+        peft_config = None
+        if self.trainer_config.training_config.use_lora:
+            use_loftq = self.trainer_config.training_config.loftq_bits is not None
+
+            lora_config_args = {
+                'r': self.trainer_config.training_config.r,
+                'lora_alpha': self.trainer_config.training_config.lora_alpha,
+                'lora_dropout': self.trainer_config.training_config.lora_dropout,
+                'bias': self.trainer_config.training_config.bias,
+                'use_rslora': self.trainer_config.training_config.use_rslora,
+                'target_modules': ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+            }
+
+            if use_loftq:
+                lora_config_args['loftq_config'] = LoftQConfig(loftq_bits=self.trainer_config.training_config.loftq_bits)
+                lora_config_args['init_lora_weights'] = 'loftq'
+
+            peft_config = LoraConfig(**lora_config_args)
 
         self.trainer = SFTTrainer(
             model=self.model,
             tokenizer=self.tokenizer,
             train_dataset=self.dataset['train'],
             eval_dataset=self.dataset['val'],
-            dataset_text_field="text",
-            max_seq_length=self.trainer_config.checkpoint_config.max_seq_len,
-            packing=False,
-            dataset_num_proc=2,
-            args=TrainingArguments(
+            data_collator=self.data_collator,
+            peft_config=peft_config,
+            # packing=False,
+            # dataset_num_proc=2,
+            args=SFTConfig(
                 # GPU related arguments
                 per_device_train_batch_size=self.trainer_config.training_config.per_device_train_batch_size,
                 per_device_eval_batch_size=self.trainer_config.training_config.per_device_eval_batch_size,
-                bf16=is_bfloat16_supported(),
-                fp16=not is_bfloat16_supported(),
+                bf16=True,
 
                 # Optimizer related arguments
                 learning_rate=self.trainer_config.training_config.learning_rate,
@@ -95,50 +164,28 @@ class MedHalTrainer:
                 
                 # Other arguments
                 output_dir=self.trainer_config.training_config.output_dir,
+                max_seq_length=self.trainer_config.checkpoint_config.max_seq_len,
             )
         )
 
     def prepare(self):
         self._prepare_dataset()
+        self._prepare_collator()
         self._prepare_training()
 
     def train(self):
 
-        logger.info("Preparing training")
-
         self.prepare()
+        logger.info("Training")
+        
+        stats = self.trainer.train()
 
-        # Source Unsloth: https://colab.research.google.com/drive/1ef-tab5bhkvWmBOObepl1WgJvfvSzn5Q?usp=sharing#scrollTo=6bZsfBuZDeCL
-        gpu_stats = torch.cuda.get_device_properties(0)
-        start_gpu_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
-        max_memory = round(gpu_stats.total_memory / 1024 / 1024 / 1024, 3)
-        print(f"GPU = {gpu_stats.name}. Max memory = {max_memory} GB.")
-        print(f"{start_gpu_memory} GB of memory reserved.")
+        print(stats)
 
-        trainer_stats = self.trainer.train()
-
-        used_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
-        used_memory_for_lora = round(used_memory - start_gpu_memory, 3)
-        used_percentage = round(used_memory / max_memory * 100, 3)
-        lora_percentage = round(used_memory_for_lora / max_memory * 100, 3)
-        print(f"{trainer_stats.metrics['train_runtime']} seconds used for training.")
-        print(
-            f"{round(trainer_stats.metrics['train_runtime']/60, 2)} minutes used for training."
-        )
-        print(f"Peak reserved memory = {used_memory} GB.")
-        print(f"Peak reserved memory for training = {used_memory_for_lora} GB.")
-        print(f"Peak reserved memory % of max memory = {used_percentage} %.")
-        print(f"Peak reserved memory for training % of max memory = {lora_percentage} %.")
-
-        self.model.save_pretrained(
+        self.trainer.save_model(
             f'{self.trainer_config.training_config.output_dir}/lora_adapters'
         )
 
         self.tokenizer.save_pretrained(
             f'{self.trainer_config.training_config.output_dir}/lora_adapters'
-        )
-
-        self.model.save_pretrained_merged(
-            f'{self.trainer_config.training_config.output_dir}/merged_model',
-            save_method='merged_16bit'
         )
