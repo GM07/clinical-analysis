@@ -12,7 +12,17 @@ def get_4bit_quantization_config():
         load_in_4bit=True,
         bnb_4bit_quant_type='nf4',
         bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+        bnb_4bit_quant_storage=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
         bnb_4bit_use_double_quant=False,
+    )
+
+def get_8bit_quantization_config():
+    return BitsAndBytesConfig(
+        load_in_8bit=True,
+        # bnb_8bit_quant_type='nf4',
+        # bnb_8bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+        # bnb_8bit_quant_storage=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+        # bnb_8bit_use_double_quant=False,
     )
 
 def load_model(checkpoint, loading_config: LoadingConfig = LoadingConfig()):
@@ -33,7 +43,7 @@ def load_model(checkpoint, loading_config: LoadingConfig = LoadingConfig()):
             config = loading_config.quantization_config
         else:
             config = get_4bit_quantization_config()
-
+    logger.info(f"Config: {config}")
     return AutoModelForCausalLM.from_pretrained(
         checkpoint,
         local_files_only=loading_config.local_files_only, 

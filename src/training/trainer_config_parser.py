@@ -1,3 +1,4 @@
+import os
 import sys
 import yaml
 
@@ -13,7 +14,6 @@ class TrainerConfigParser:
         if config_path is None:
             logger.info("No config path provided, using first argument as config path")
             config_path = sys.argv[1]
-        
 
         with open(config_path, 'r') as f:
             try:
@@ -60,5 +60,7 @@ class TrainerConfigParser:
                     if field_metadata.get('required', False) and field_value is None:
                         logger.error(f"Missing required field '{field_name}' in section '{config_class_name}' in config file {config_path}")
                         raise ValueError(f"Missing required field '{field_name}' in section '{config_class_name}' in config file {config_path}")
-
+                    if field_metadata.get('is_path', False):
+                        logger.info(f"Expanding path for {field_name} : {field_value} to {os.path.expandvars(field_value)}")
+                        c.__dict__[config_class_name].__dict__[field_name] = os.path.expandvars(field_value)
         return c

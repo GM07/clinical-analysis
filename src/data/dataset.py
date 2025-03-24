@@ -1,4 +1,3 @@
-import heapq
 import logging
 import os
 import random
@@ -8,7 +7,6 @@ import ast
 
 from colorist import Color
 
-from datasets import load_dataset
 import pandas as pd
 
 logger = logging.getLogger(__name__)

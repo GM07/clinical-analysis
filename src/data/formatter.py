@@ -1,10 +1,11 @@
 from typing import Any, Dict, List
 
 TASK_DESCRIPTION = """### Task Description
-You will evaluate whether a medical statement is factually accurate.
-The statement may reference a provided context.
-Respond with "YES" if the statement is factually correct or "NO" if it contains inaccuracies.
-Provide a brief explanation justifying your determination, citing specific evidence or reasoning.
+- You will evaluate whether a medical statement is factually accurate.
+- The statement may reference a provided context.
+- Respond with "YES" if the statement is factually correct or "NO" if it contains inaccuracies.
+- In order to answer YES, everything in the statement must be supported by the context.
+- In order to answer NO, there must be at least one piece of information in the statement that is not supported by the context.
 
 """
 
@@ -18,18 +19,14 @@ MEDHAL_FORMAT_TRAINING_CONTEXT = TASK_DESCRIPTION + CONTEXT + """### Statement
 
 ### Factual
 {label}
-
-### Explanation
-{explanation}"""
+"""
 
 MEDHAL_FORMAT_TRAINING_NO_CONTEXT = TASK_DESCRIPTION + """### Statement
 {statement}
 
 ### Factual
 {label}
-
-### Explanation
-{explanation}"""
+"""
 
 MEDHAL_FORMAT_INFERENCE_CONTEXT = TASK_DESCRIPTION + CONTEXT + """### Statement
 {statement}
@@ -80,9 +77,9 @@ class Formatter:
             med_hal_format_no_context = MEDHAL_FORMAT_INFERENCE_NO_CONTEXT
 
         if context is not None and context != 'None' and context != '':
-            output = med_hal_format_context.format(context=context, statement=statement, label=yes_no_label, explanation=explanation)
+            output = med_hal_format_context.format(context=context, statement=statement, label=yes_no_label)
         else:
-            output = med_hal_format_no_context.format(statement=statement, label=yes_no_label, explanation=explanation)
+            output = med_hal_format_no_context.format(statement=statement, label=yes_no_label)
 
         if self.training:
             output += self.tokenizer.eos_token
