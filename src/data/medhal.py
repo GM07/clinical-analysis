@@ -1,12 +1,13 @@
 
+import re
 import uuid
-from datasets import Dataset as HuggingFaceDataset, concatenate_datasets
 import nltk
 import nltk.translate.bleu_score
+from datasets import Dataset as HuggingFaceDataset, concatenate_datasets
+import logging
 
 from src.data.augmented_clinical_notes import AugmentedClinicalNotes
 
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ class MedHal:
         sumpubmed_positive_path: str,
         sumpubmed_negative_path: str,
         output_path: str = None
-    ):
+    ) -> HuggingFaceDataset:
 
         logger.info(f"Processing ACM dataset from {acm_path}")
         acm_dataset = MedHal.from_augmented_clinical_notes(acm_path)
@@ -256,11 +257,43 @@ class MedHal:
         )
 
         dataset = dataset.filter(MedHal.filter_multiple_sentence_statements, desc="Filtering multiple sentence statements")
+        dataset = MedHal.fix_medmcqa_explanations(dataset)
 
         if output_path is not None:
             dataset.to_csv(output_path, index=False)
 
         return dataset
+
+    MEDMCQA_EXPLANATION_REGEX_PATTERN = """Ans(?:wer|wee)*(?:\.|:)* *(?:is)* *(?:\(|'|"|-)* *[?:a-d|A-D]* *(?:\(|\)|'|")* *(?:i\.e\.|:)*(?:\.|\,)*"""
+
+    @staticmethod
+    def fix_medmcqa_explanations(dataset: HuggingFaceDataset) -> HuggingFaceDataset:
+        """
+        In certain samples of the MedMCQA dataset, the explanation will contain the option of the sample (i.e. 'Ans: b (Benign HTN)'). We remove those as they don't make sense in this dataset
+
+        Args: 
+            dataset: HuggingFace dataset containing the samples (can be all samples or just MedMCQA)
+        
+        Returns the dataset where the explanation is fixed
+        """
+        pattern = re.compile(MedHal.MEDMCQA_EXPLANATION_REGEX_PATTERN, re.IGNORECASE)
+
+        def fix_explanations(row):
+            if row['explanation'] is None:
+                return row
+            try:
+                new_explanation = re.sub(pattern, '', row['explanation'])
+                return {'explanation': new_explanation}
+            except:
+                # If regex did not work, we simply remove the ans
+                index_ans = row['explanation'].find('Ans')
+                if index_ans > -1:
+                    return {'explanation': row['explanation'][index_ans + len('Ans'):]}
+                return row
+
+        dataset = dataset.map(fix_explanations, desc='Fixing medmcqa explanations')
+        return dataset
+
 
     @staticmethod
     def from_medqa(path: str, output_path: str = None, llm_output_column: str = 'output'):
