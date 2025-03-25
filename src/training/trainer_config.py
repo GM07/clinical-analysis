@@ -210,9 +210,9 @@ class TrainingConfig:
         }
     )
     use_gradient_checkpointing: str | bool = field(
-        default='unsloth',
+        default=True,
         metadata={
-            'help': 'Whether to use gradient checkpointing (defaults to "unsloth").'
+            'help': 'Whether to use gradient checkpointing (defaults to "True").'
         }
     )
     

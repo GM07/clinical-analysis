@@ -154,6 +154,8 @@ class MedHalTrainer:
                 # GPU related arguments
                 per_device_train_batch_size=self.trainer_config.training_config.per_device_train_batch_size,
                 per_device_eval_batch_size=self.trainer_config.training_config.per_device_eval_batch_size,
+                gradient_checkpointing=self.trainer_config.training_config.use_gradient_checkpointing,
+                gradient_accumulation_steps=self.trainer_config.training_config.gradient_accumulation_steps,
                 bf16=True,
 
                 # Optimizer related arguments
