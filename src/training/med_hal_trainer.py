@@ -1,6 +1,8 @@
-import transformers
+import os
+import logging
+import datetime
+
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers import TrainingArguments
 from datasets import load_from_disk
 
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM, SFTConfig
@@ -11,13 +13,12 @@ from src.models.loading_config import LoadingConfig
 from src.models.utils import get_4bit_quantization_config, get_8bit_quantization_config, load_model, load_tokenizer
 from src.training.trainer_config import TrainerConfig
 
-import logging
 
 logger = logging.getLogger(__name__)
 
 class MedHalTrainer:
 
-    RESPONSE_TEMPLATE_CONTEXT = "\n### Factual\n"
+    RESPONSE_TEMPLATE_CONTEXT = "### Factual"
 
     def __init__(self, trainer_config: TrainerConfig):
         self.trainer_config = trainer_config
@@ -113,6 +114,13 @@ class MedHalTrainer:
     def _prepare_training(self):
         logger.info("Preparing training")
 
+        training_folder = self.trainer_config.training_config.output_dir
+        if training_folder[-1] != '/':
+            training_folder += '/'
+        training_folder += '{date:%Y-%m-%d_%H_%M_%S}'.format(date=datetime.datetime.now())
+        os.makedirs(training_folder)
+
+        logger.info(f'Created folder for training at {training_folder}')
 
         peft_config = None
         if self.trainer_config.training_config.use_lora:
@@ -135,7 +143,7 @@ class MedHalTrainer:
 
         self.trainer = SFTTrainer(
             model=self.model,
-            tokenizer=self.tokenizer,
+            # tokenizer=self.tokenizer,
             train_dataset=self.dataset['train'],
             eval_dataset=self.dataset['val'],
             data_collator=self.data_collator,
@@ -163,7 +171,7 @@ class MedHalTrainer:
                 do_eval=True,
                 
                 # Other arguments
-                output_dir=self.trainer_config.training_config.output_dir,
+                output_dir=training_folder,
                 max_seq_length=self.trainer_config.checkpoint_config.max_seq_len,
             )
         )
