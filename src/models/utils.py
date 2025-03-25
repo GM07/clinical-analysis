@@ -1,7 +1,8 @@
 import logging
 
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, AutoConfig
 import torch
+from accelerate import load_checkpoint_and_dispatch, init_empty_weights
 
 from src.models.loading_config import LoadingConfig
 
@@ -75,3 +76,42 @@ def load_tokenizer(checkpoint, loading_config: LoadingConfig = LoadingConfig()):
         tokenizer.pad_token = tokenizer.eos_token
 
     return tokenizer
+
+def load_model_empty(checkpoint, model_name, model_class, loading_config: LoadingConfig = LoadingConfig()):
+    """
+    Loads a model using a model name from the registry
+
+    Args:
+        checkpoint: Name of the model as shown in the HuggingFace website
+        loading_config: Config on how to load the model
+
+    Returns
+    Model object 
+    """
+    logger.info(f'Loading model from {checkpoint} with config {loading_config}')
+    config = None
+    if loading_config.use_quantization:
+        if loading_config.quantization_config:
+            config = loading_config.quantization_config
+        else:
+            config = get_4bit_quantization_config()
+    logger.info(f"Config: {config}")
+
+    # 2. Load the model configuration:
+    model_config = AutoConfig.from_pretrained(model_name)
+
+    # 3. Instantiate the model with empty weights:
+    with init_empty_weights():
+        model = model_class(model_config)
+
+    model = load_checkpoint_and_dispatch(
+        model,
+        checkpoint,
+        # local_files_only=loading_config.local_files_only, 
+        # trust_remote_code=True,
+        # quantization_config=config,
+        # device_map=loading_config.device_map,
+        dtype=torch.bfloat16 if loading_config.bf16 else torch.float16,
+    )
+
+    return model

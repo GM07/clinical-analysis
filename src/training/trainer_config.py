@@ -143,9 +143,9 @@ class TrainingConfig:
         }
     )
     optim: str = field(
-        default="adamw_8bit",
+        default="adamw",
         metadata={
-            'help': 'The optimizer to use (defaults to "adamw_8bit").'
+            'help': 'The optimizer to use (defaults to "adamw").'
         }
     )
 
