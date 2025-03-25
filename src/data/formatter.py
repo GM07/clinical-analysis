@@ -19,6 +19,9 @@ MEDHAL_FORMAT_TRAINING_CONTEXT = TASK_DESCRIPTION + CONTEXT + """### Statement
 
 ### Factual
 {label}
+
+### Explanation
+{explanation}
 """
 
 MEDHAL_FORMAT_TRAINING_NO_CONTEXT = TASK_DESCRIPTION + """### Statement
@@ -26,6 +29,9 @@ MEDHAL_FORMAT_TRAINING_NO_CONTEXT = TASK_DESCRIPTION + """### Statement
 
 ### Factual
 {label}
+
+### Explanation
+{explanation}
 """
 
 MEDHAL_FORMAT_INFERENCE_CONTEXT = TASK_DESCRIPTION + CONTEXT + """### Statement
@@ -77,9 +83,9 @@ class Formatter:
             med_hal_format_no_context = MEDHAL_FORMAT_INFERENCE_NO_CONTEXT
 
         if context is not None and context != 'None' and context != '':
-            output = med_hal_format_context.format(context=context, statement=statement, label=yes_no_label)
+            output = med_hal_format_context.format(context=context, statement=statement, label=yes_no_label, explanation=explanation)
         else:
-            output = med_hal_format_no_context.format(statement=statement, label=yes_no_label)
+            output = med_hal_format_no_context.format(statement=statement, label=yes_no_label, explanation=explanation)
 
         if self.training:
             output += self.tokenizer.eos_token
