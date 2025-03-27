@@ -36,10 +36,10 @@ class ModelInferencePipeline(InferencePipeline):
 
     def __init__(self, model_path: str, tokenizer_path: str = None):
         if tokenizer_path is None:
-            self.llm = LLM(model=model_path)
+            self.llm = LLM(model=model_path, quantization="bitsandbytes", load_format="bitsandbytes")
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
         else:
-            self.llm = LLM(model=model_path, tokenizer=tokenizer_path)
+            self.llm = LLM(model=model_path, tokenizer=tokenizer_path, quantization="bitsandbytes", load_format="bitsandbytes")
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 
     def run_inference(self, inputs: List, max_new_tokens: int = 128):

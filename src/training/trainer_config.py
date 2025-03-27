@@ -102,9 +102,9 @@ class TrainingConfig:
     )
 
     logging_steps: int = field(
-        default=10,
+        default=1000,
         metadata={
-            'help': 'The number of logging steps (defaults to 10).'
+            'help': 'The number of logging steps (defaults to 1000).'
         }
     )
 
@@ -123,16 +123,16 @@ class TrainingConfig:
     )
 
     save_steps: int = field(
-        default=100,
+        default=1000,
         metadata={
-            'help': 'The number of steps to save the model (defaults to 100).'
+            'help': 'The number of steps to save the model (defaults to 1000).'
         }
     )
 
     eval_steps: int = field(
-        default=100,
+        default=1000,
         metadata={
-            'help': 'The number of steps to evaluate the model (defaults to 10).'
+            'help': 'The number of steps to evaluate the model (defaults to 100).'
         }
     )
 

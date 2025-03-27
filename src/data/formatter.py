@@ -53,7 +53,7 @@ class Formatter:
         self.training = training
 
     def __call__(self, x) -> List[str]:
-        if isinstance(x['context'], str):
+        if isinstance(x['statement'], str):
             return {'text': self.format_sample(x['context'], x['statement'], x['label'], x['explanation'])}
 
         return {'text': self.format_batched_dict(x)}

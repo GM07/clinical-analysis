@@ -5,8 +5,6 @@ from typing import Any, List, Tuple
 import joblib
 import ast
 
-from colorist import Color
-
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -368,8 +366,8 @@ class DatasetPartitionAnalyzer:
             processed_length = partition.nb_elements - unprocessed_length
             percentage_processed = processed_length / partition.nb_elements * 100
             processed_bar_string = '=' * (processed_length // reduce_factor) + ' ' * (unprocessed_length // reduce_factor)
-            color = Color.GREEN if percentage_processed > 50 else Color.RED
-            print(f'{partition.start}-{partition.end}: {color}[{processed_bar_string}]{Color.OFF} {percentage_processed:.1f}% ({processed_length} / {partition.nb_elements})')
+            color = '\033[92m' if percentage_processed > 50 else '\033[91m'
+            print(f'{partition.start}-{partition.end}: {color}[{processed_bar_string}]\033[0m {percentage_processed:.1f}% ({processed_length} / {partition.nb_elements})')
 
         print('=' * 100)
 
