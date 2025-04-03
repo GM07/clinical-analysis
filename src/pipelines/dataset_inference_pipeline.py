@@ -7,6 +7,7 @@ from typing import Callable, List
 from tqdm import tqdm
 
 # if 'vllm' in sys.modules:
+import torch
 from vllm import LLM, SamplingParams
 
 from src.data.dataset import DatasetPartition
@@ -35,11 +36,12 @@ class ModelInferencePipeline(InferencePipeline):
     """
 
     def __init__(self, model_path: str, tokenizer_path: str = None):
+        self.nb_gpus = torch.cuda.device_count()
         if tokenizer_path is None:
-            self.llm = LLM(model=model_path, quantization="bitsandbytes", load_format="bitsandbytes")
+            self.llm = LLM(model=model_path, tensor_parallel_size=self.nb_gpus)
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
         else:
-            self.llm = LLM(model=model_path, tokenizer=tokenizer_path, quantization="bitsandbytes", load_format="bitsandbytes")
+            self.llm = LLM(model=model_path, tokenizer=tokenizer_path, tensor_parallel_size=self.nb_gpus)
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 
     def run_inference(self, inputs: List, max_new_tokens: int = 128):
@@ -72,9 +74,8 @@ class DatasetInferencePipeline(InferencePipeline):
         dataset: HuggingFaceDataset, 
         input_column: str = 'input', 
         output_column: str = 'output',
-        max_new_tokens: int = 128, 
+        max_new_tokens: int = 256, 
         max_rows_to_process: int = None,
-        batch_size: int = 8,
         apply_chat_template: bool = True, 
         rows_to_chat: Callable = None,
         saving_path: str = None,
@@ -123,33 +124,42 @@ class DatasetInferencePipeline(InferencePipeline):
 
         # Only process inputs starting from start_idx
         if start_idx < len(inputs):
+
+            # Calculate the end index based on max_rows_to_process
+            if max_rows_to_process is None:
+                # Process all remaining rows
+                end_idx = len(dataset)
+                logger.info(f"Processing rows from index {start_idx} to end (all remaining).")
+            else:
+                # Process up to max_rows_to_process rows
+                end_idx = min(start_idx + max_rows_to_process, len(dataset))
+                logger.info(f"Processing up to {max_rows_to_process} rows, from index {start_idx} to {end_idx}.")
+
+            inputs_to_process = inputs[start_idx:end_idx]
+
             output = self.run_inference(
-                inputs[start_idx:], 
+                inputs_to_process, 
                 max_new_tokens=max_new_tokens, 
-                # start_idx=start_idx,
-                # max_rows_to_process=max_rows_to_process,
-                # batch_size=batch_size
             )
             
-            # Update results list with new outputs
-            for i, result in enumerate(output, start=start_idx):
-                results[i] = result
+            output_idx = 0
+            for i in range(start_idx, end_idx):
+                if output_idx < len(output):
+                    results[i] = output[output_idx]
+                    output_idx += 1
+                else:
+                    # This shouldn't happen if run_inference returns one output per input
+                    logger.error(f"Mismatch between expected outputs and actual outputs at index {i}")
+                    break # Or handle error appropriately
 
-            # Save intermediate results
+            # Remove old output column if it exists, then add the updated one
             if output_column in dataset.column_names:
                 dataset = dataset.remove_columns(output_column)
             dataset = dataset.add_column(output_column, results)
 
+            # Clean up temporary columns if they were added by get_chats
             if f'{input_column}_tmp' in dataset.column_names:
                 dataset = dataset.remove_columns(f'{input_column}_tmp')
-
-
-        # output = self.run_inference(inputs, max_new_tokens=max_new_tokens)
-        # results.extend(output)
-
-        # output_column = output_column if output_column is not None else self.output_column
-        # dataset = dataset.add_column(output_column, results)
-        # # dataset = dataset.remove_columns(f'{input_column}_tmp')
 
         if saving_path is not None:
             dataset.to_csv(saving_path, index=False)
@@ -414,11 +424,6 @@ class ProviderDatasetInferencePipeline(DatasetInferencePipeline):
                     
                     results.extend(await self.call_provider(request_data))
                     success = True
-                    
-                    # Log progress periodically
-                    global_idx = batch_idx + start_idx
-                    # if global_idx % 100 == 0:
-                        # logging.info(f"Processed {global_idx}/{len(inputs) + start_idx} inputs")
                     
                 except Exception as e:
                     retries += 1
