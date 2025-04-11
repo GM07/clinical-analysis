@@ -1,9 +1,9 @@
 from collections import Counter, defaultdict
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 from tqdm import tqdm
 import joblib
 
-from src.ontology.ontology_filter import BranchesFilter
+from src.ontology.ontology_filter import BranchesFilter, SetFilter
 from src.ontology.snomed import Snomed
 from src.ontology.annotator import Annotator
 
@@ -162,6 +162,42 @@ class DomainClassFrequency:
         
         concepts = Counter(DomainClassFrequency._get_adjusted_frequencies(Counter(concepts), snomed))
         return DomainClassFrequency.format_concept_list(concepts.most_common(top_n))
+
+    @staticmethod
+    def get_domain_concepts(text: str, snomed: Snomed, annotator: Annotator, domain_set: Set[str] = None):
+        """
+        Retrieves the most frequent concepts of a text
+
+        Args:
+            text: The text to analyze
+            snomed: The SNOMED ontology
+            annotator: The annotator to use
+            domain_set: Set of concepts that are allowed
+
+        Returns:
+            A tuple containing the concept ids and the frequencies
+        """
+        concepts = annotator.annotate(text, return_ids_only=True)
+        concepts = DomainClassFrequency._get_all_ancestors(concepts, snomed)
+
+        filter = BranchesFilter(snomed, DomainClassFrequency.EXCLUDE_IDS)
+        concepts = filter(concepts)
+
+        filter = SetFilter(domain_set)
+        concepts = filter(concepts)
+
+        return concepts
+
+    @staticmethod
+    def get_concepts_from_dcf_paths(paths: List[str]):
+        """
+        Loads dcfs and merges their concept lists
+        """
+        all_concepts = set()
+        for path in paths:
+            dcf = joblib.load(path)
+            all_concepts = all_concepts.union(dcf.get_concepts(separate=True)[0])
+        return all_concepts
 
     def _hash_to_color(self, text: str) -> str:
         """Convert text to a color using hash"""

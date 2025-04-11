@@ -79,3 +79,19 @@ class BranchesFilter(OntologyFilter):
             if len(ancestors) > 0 and len(intersect) == 0:
                 filtered_concept_ids.append(concept_id)
         return filtered_concept_ids
+
+class SetFilter(OntologyFilter):
+    """
+    Filter that will only keep concepts if they are in a predefined set of concepts
+    """
+
+    def __init__(self, base_concept_ids: List[str]):
+        super().__init__()
+
+        self.base_concept_ids = set(base_concept_ids)
+
+    def __call__(self, concept_ids: List[str]):
+        """
+        Filters ontological concepts (keeps the order of the list)
+        """
+        return list(self.base_concept_ids.intersection(set(concept_ids)))

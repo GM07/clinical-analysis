@@ -25,7 +25,7 @@ class ExtractionPipelineConfig:
     save_frequency: int = 1
 
 @dataclass
-class DomainExtractionPipelineConfig(ExtractionPipelineConfig):
+class ExtractionPipelineConfig(ExtractionPipelineConfig):
     nb_concepts: int = 30
 
 class ExtractionPipeline(Pipeline):
@@ -85,7 +85,7 @@ class ExtractionPipeline(Pipeline):
             annotator=self.medcat,
             apply_chat_template=True
         )
-        
+
 class DatasetExtractionPipeline(ExtractionPipeline):
     """
     Pipeline used to extract information from clinical notes using ontological concepts tagged by the MedCat
@@ -137,7 +137,7 @@ class DatasetExtractionPipeline(ExtractionPipeline):
         self, 
         dataset: HuggingFaceDataset,
         generation_config: GenerationConfig = GenerationConfig.ontology_beam_search(), 
-        extraction_config: DomainExtractionPipelineConfig = DomainExtractionPipelineConfig()
+        extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()
     ):
         """
         Executes the pipeline on the dataset
@@ -173,7 +173,7 @@ class DatasetExtractionPipeline(ExtractionPipeline):
 
         return dataset
 
-    def greedy_search(self, dataset: HuggingFaceDataset, extraction_config: DomainExtractionPipelineConfig):
+    def greedy_search(self, dataset: HuggingFaceDataset, extraction_config: ExtractionPipelineConfig):
         if self.cache_dataset is None:
             logger.info(f'Generating temporary dataset for pipeline')
             prompter = OntologyBasedPrompter(
@@ -202,6 +202,7 @@ class DatasetExtractionPipeline(ExtractionPipeline):
         dataset = self.pipeline(self.cache_dataset)
 
         return dataset
+    
     def prompt_to_chat(self, prompt: str):
         chat = []
         if self.system_prompt is not None:
@@ -483,7 +484,7 @@ class PartitionedExtractionPipeline(ExtractionPipeline):
         self, 
         partition: DatasetPartition, 
         generation_config: GenerationConfig = GenerationConfig.ontology_beam_search(), 
-        extraction_config: DomainExtractionPipelineConfig = DomainExtractionPipelineConfig()
+        extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()
     ):
         """
         Executes the pipeline on the dataset

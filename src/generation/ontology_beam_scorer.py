@@ -41,6 +41,7 @@ class GenerationConfig:
     nb_beam_hyps_to_keep: int = 1
     window_size: int = 5
     diversity_penalty: float = 1.0
+    batch_size: int = 1
     
     # Weights associated with the original beam scores and the boost scores.
     # The final scores will be `score_weights[0]` * original_beam_scores + `score_weights[1]` * custom_scores
@@ -56,30 +57,34 @@ class GenerationConfig:
     exclude_ids: ClassVar[set[str]] = set([]) # set(['362981000', '419891008', '106237007'])
     
     @classmethod
-    def greedy_search(cls):
+    def greedy_search(cls, batch_size: int = 1):
         """
         Returns an instance of this class leading to greedy search
         """
-        return cls()
+        instance = cls()
+        instance.batch_size = batch_size
+        return instance
 
     @classmethod
-    def beam_search(cls):
+    def beam_search(cls, batch_size: int = 1):
         """
         Returns an instance of this class leading to diverse beam search
         """
         instance = cls()
         instance.use_group_beam_search = True
         instance.normal_beam_search = True
+        instance.batch_size = batch_size
         return instance
 
     @classmethod
-    def ontology_beam_search(cls):
+    def ontology_beam_search(cls, batch_size: int = 1):
         """
         Returns an instance of this class leading to ontology-based beam search
         """
         instance = cls()
         instance.use_group_beam_search = True
         instance.score_boost_factors = [3.0, 1.0, 10.0]
+        instance.batch_size = batch_size
         return instance
 
 class OntologyBeamScorerConfig:
@@ -116,7 +121,6 @@ class OntologyBeamScorer(BeamSearchScorer):
     def __init__(
         self,
         config: OntologyBeamScorerConfig,
-        batch_size: int, 
         device: torch.device, 
         length_penalty: Optional[float] = 1.0, 
         do_early_stopping: Optional[Union[bool, str]] = False, 
@@ -128,7 +132,7 @@ class OntologyBeamScorer(BeamSearchScorer):
         For other arguments, @see `BeamSearchScorer`
         """
         super().__init__(
-            batch_size, 
+            config.generation_config.batch_size, 
             config.generation_config.nb_beams, 
             device, 
             length_penalty, 
@@ -137,7 +141,7 @@ class OntologyBeamScorer(BeamSearchScorer):
             config.generation_config.nb_beam_groups, 
             config.generation_config.max_length
         )
-        self.batch_size = batch_size
+        self.batch_size = config.generation_config.batch_size
         self.config = config
         self.nb_tokens_generated = self.config.generation_config.window_size // 2
 
@@ -155,7 +159,7 @@ class OntologyBeamScorer(BeamSearchScorer):
         Returns:
         Associated concept id linked to the prompt
         """
-        batch_index = index % self.batch_size
+        batch_index = index // self.group_size
         return self.config.generation_input.concept_ids[batch_index]
 
     def get_clinical_note_from_index(self, index):
@@ -169,7 +173,7 @@ class OntologyBeamScorer(BeamSearchScorer):
         Returns:
         Associated clinical note linked to the prompt
         """
-        batch_index = index % self.batch_size
+        batch_index = index // self.group_size
         return self.config.generation_input.clinical_notes[batch_index]
 
     def get_hierarchy_beam_boost(self, base_class_id: str, detected_class_id: str):

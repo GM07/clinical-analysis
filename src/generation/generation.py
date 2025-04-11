@@ -1,4 +1,6 @@
-from typing import List
+from typing import List, Set
+from itertools import groupby
+from operator import itemgetter
 from collections import defaultdict
 import logging
 import types
@@ -7,8 +9,10 @@ from tqdm import tqdm
 
 import torch
 from accelerate import Accelerator
+
 from transformers.generation.configuration_utils import GenerationConfig as HFGenerationConfig
 from transformers.generation.utils import GenerationMixin
+from datasets import Dataset
 
 from src.domain_adaptation.domain_class_frequency import DomainClassFrequency
 from src.generation.ontology_beam_scorer import OntologyBeamScorer, OntologyBeamScorerConfig, GenerationInput, GenerationConfig
@@ -99,12 +103,13 @@ class OntologyConstrainedModel:
         return results
 
 
-    def greedy_search(self, generation_input: GenerationInput) -> List[str]:
+    def greedy_search(self, generation_input: GenerationInput, generation_config: GenerationConfig) -> List[str]:
         """
         Sends the `generation_input` to the model using greedy search decoding
 
         Args:
             generation_input: Object containing the prompts to send to the model
+            generation_config: Generation config of the model
         """
 
         model_input = self.prepare_model_inputs(generation_input.prompts, system_prompt=generation_input.system_prompt)
@@ -114,16 +119,16 @@ class OntologyConstrainedModel:
         self.normal_generate()
 
         hf_generation_config = HFGenerationConfig(
-                temperature=0,
+                # temperature=0,
                 top_p=1,
-                top_k=-1,
+                # top_k=-1,
                 seed=42
         )
 
         with torch.no_grad():
             generated = self.model.generate(
                 **model_input, 
-                max_new_tokens=128,
+                max_new_tokens=generation_config.max_new_tokens,
                 generation_config=hf_generation_config,
                 pad_token_id=self.tokenizer.pad_token_id,
             )
@@ -139,9 +144,10 @@ class OntologyConstrainedModel:
         input_ids = tokenized_inputs['input_ids'].to(self.get_device())
         attention_mask = tokenized_inputs['attention_mask'].to(self.get_device())
         hf_generation_config = HFGenerationConfig(
-                temperature=0,
+                # temperature=0,
                 top_p=1,
-                top_k=-1,
+                # top_k=-1,
+                # do_sample=False,
                 num_beams=generation_config.nb_beams,  # Number of beams for beam search
                 num_return_sequences=1,  # Return all beams
                 num_beam_groups=generation_config.nb_beam_groups,
@@ -175,7 +181,6 @@ class OntologyConstrainedModel:
                         generation_input=generation_input,
                         generation_config=generation_config
                     ),
-                    batch_size=len(generation_input.prompts),
                     device=self.get_device()
                 )
                 generation_output = self.model.generate(
@@ -194,9 +199,7 @@ class OntologyConstrainedModel:
         if generation_config.use_group_beam_search:
             return self.group_beam_search(generation_input, generation_config)
         else:
-            return self.greedy_search(generation_input)
-
-
+            return self.greedy_search(generation_input, generation_config)
 
 
 class OntologyPromptTemplate:
@@ -207,9 +210,10 @@ class OntologyPromptTemplate:
         else:
             self.question_template = question_template
 
+
 class OntologyBasedPrompter:
     """
-    Responsable of the extraction step
+    Responsable of the extraction step (v1.0)
     """
     
     def __init__(
@@ -252,7 +256,7 @@ class OntologyBasedPrompter:
         Args:
             clinical_notes: Clinical notes used to extract information from
             top_n: Number maximal concepts to extract from each clinical note
-            batch_size: Number of concepts to process in parallel per clinical note (not used if `self.dataset_mode` is `True`)
+            batch_size: Number of concepts to process in parallel per clinical note (not used if `self.dataset_mode` is `True`) (will override generation_config.batch_size)
             generation_config: Configuration guiding the model's generation (not used if `self.dataset_mode` is `True`)
             ids: Ids indentifying each clinical note (used if `self.dataset_mode` is `True` to store the prompts)
 
@@ -334,6 +338,7 @@ class OntologyBasedPrompter:
             start = i * batch_size
             end = min(len(most_frequent_concepts), (i + 1) * batch_size)
             concept_ids = most_frequent_concepts[start:end]
+
             self.extract_attribute(clinical_note, concept_ids, generation_config=generation_config)
 
     def extract_attribute(
@@ -359,6 +364,7 @@ class OntologyBasedPrompter:
 
         # Generate answers
         generation_input = GenerationInput(prompts=prompts, clinical_notes=[clinical_note] * len(prompts), concept_ids=concept_ids, system_prompt=self.system_prompt)
+        generation_config.batch_size = len(prompts)
         answers = self.constrained_model.generate(generation_input, generation_config)
 
         self.store_extractions_from_generation(concept_ids, answers)
@@ -430,3 +436,164 @@ class OntologyBasedPrompter:
             else:
                 # self.attributes[self.current_note_id][label] = 'N/A'
                 self.attributes_by_id[self.current_note_id][concept_id] = 'N/A'
+
+
+class DomainOntologyPrompter:
+    # v2.0
+
+    def __init__(
+        self, 
+        snomed: Snomed, 
+        annotator: Annotator, 
+        constrained_model: OntologyConstrainedModel = None, 
+        template: OntologyPromptTemplate = OntologyPromptTemplate(),
+        system_prompt: str = None
+    ):
+        """
+        Initializes an OntologyBasedPrompter object that handles the extraction of medical concepts from text.
+
+        Args:
+            constrained_model: An OntologyConstrainedModel instance used to generate responses
+            snomed: A Snomed ontology instance providing access to medical concepts and relationships
+            annotator: An Annotator instance for identifying medical concepts in text
+            template: An OntologyPromptTemplate instance defining the prompt format (default: OntologyPromptTemplate())
+            dataset_mode: Whether the prompt will be stored in a dataset instead of being sent to the model
+            system_prompt: System prompt used to generate the prompts
+        """
+        
+        self.constrained_model = constrained_model
+        self.snomed = snomed
+        self.annotator = annotator
+        self.template = template
+        self.system_prompt = system_prompt
+        
+        self.exclude_ids = set(['362981000', '444677008', '419891008', '276339004', '106237007'])
+        self.attributes_by_id = []
+        self.current_note_id = 0
+
+
+    def __call__(self, clinical_notes: List[str], domain_concept_ids: Set[str], generation_config: GenerationConfig = GenerationConfig(), return_dataset: bool = False):
+        """
+        Starts the extraction on a dataset
+
+        Args:
+            clinical_notes: List of clinical notes to process
+            domain_concept_ids: Set of concept ids in snomed ontology that are related to the domain
+            generation_config: Generation config to be used by the model
+            return_dataset: Whether to return the internal dataset used for generation
+
+        Returns:
+        List of prompts per clinical notes
+        """
+        logger.info(f'Generating prompts')
+        dataset: Dataset = self.generate_dataset(clinical_notes=clinical_notes, domain_concept_ids=domain_concept_ids)
+
+        # results = np.unique(dataset['note_id'])
+        results = []
+        logger.info('Generating prompts')
+        batch_size = generation_config.batch_size
+        for batch in dataset.iter(batch_size=batch_size):
+            generation_input = GenerationInput(
+                prompts=batch['prompt'], 
+                clinical_notes=batch['clinical_note'], 
+                concept_ids=batch['concept_id'],
+                system_prompt=self.system_prompt
+            )
+            
+            generation_config.batch_size = len(generation_input.prompts)
+            answers = self.constrained_model.generate(generation_input, generation_config)
+            results.extend(answers)
+        
+        dataset = dataset.add_column('result', results)
+
+        answers = self.group_results_by_notes(dataset)
+        
+        if return_dataset:
+            return answers, dataset
+        return answers
+
+    def generate_dataset(self, clinical_notes: List[str], domain_concept_ids: Set[str]) -> Dataset:
+        """
+        Generates the prompts needed for extraction in a dataset object
+        
+        Args:
+            clinical_notes: List of clinical notes to process
+            domain_concept_ids: Set of concept ids in snomed ontology that are related to the domain
+        """
+        dataset = defaultdict(list)
+
+        id = 0
+        note_id = 0
+        for clinical_note in tqdm(clinical_notes, total=len(clinical_notes)):
+
+            domain_concepts = DomainClassFrequency.get_domain_concepts(
+                text=clinical_note, 
+                snomed=self.snomed, 
+                annotator=self.annotator, 
+                domain_set=domain_concept_ids
+            )
+            
+            prompts = self.create_prompts(clinical_note, domain_concepts)
+
+            for prompt, concept in zip(prompts, domain_concepts):
+                dataset['id'].append(id)
+                dataset['note_id'].append(note_id)
+                dataset['clinical_note'].append(clinical_note)
+                dataset['prompt'].append(prompt)
+                dataset['concept_id'].append(concept)
+                id += 1
+
+            note_id += 1
+        return Dataset.from_dict(dataset)
+
+    def create_prompts(self, clinical_note, concept_ids: List[str]):
+        """
+        Creates prompts using a clinical note and concept ids before sending it to the model.
+
+        Args:
+            clinical_note: Note used in the extraction step
+            concept_ids: Concept ids to create prompts from
+        """
+
+        prompts = []
+        for concept_id in concept_ids:
+            label = self.snomed.get_label_from_id(concept_id)
+            properties = self.augment_prompt_with_ontology(concept_id, label)
+            
+            prompt = self.template.question_template.format_map({
+                'clinical_note': clinical_note.strip(),
+                'label': label,
+                'properties': properties
+            })
+
+            prompts.append(prompt)
+        return prompts
+
+    def augment_prompt_with_ontology(self, concept_id: str, concept_label: str):
+        """
+        Augments the prompt with information found from the ontology about a concept
+
+        Args:
+            concept_id: Id of the concept used to augment the prompt
+            concept_label: Label of the concept used to augment the prompt
+
+        Returns:
+        Augmented prompt
+        """
+        restriction_properties = self.snomed.get_restriction_properties_of_id(concept_id)
+        if len(restriction_properties) == 0:
+            return ''
+        else:
+            current_property_knowledge = '\n- '.join(map(lambda x: x.get_value(), restriction_properties))
+            property_sentence = '' if len(current_property_knowledge.strip()) == 0 else f'{concept_label} is characterized by : \n- {current_property_knowledge}\n'
+            return property_sentence
+
+    def group_results_by_notes(self, dataset: Dataset):
+        # Group by note_id and create the result list
+        result = []
+        for _, group in groupby(dataset, key=itemgetter('note_id')):
+            # Convert group to list to work with it
+            group_list = list(group)
+            result.append({row['concept_id']: row['result'] for row in group_list})
+        
+        return result
