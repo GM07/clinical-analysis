@@ -54,24 +54,35 @@ class Formatter:
 
     def __call__(self, x) -> List[str]:
         if isinstance(x['statement'], str):
+
+            if self.training:
+                assert 'explanation' in x, 'When generating training samples, an explanation must be provided'
+
             return {'text': self.format_sample(x['context'], x['statement'], x['label'], x['explanation'])}
 
         return {'text': self.format_batched_dict(x)}
 
     def format_batched_dict(self, samples: List[Dict[str, Any]]) -> List[str]:
 
+        if self.training:
+            assert 'explanation' in samples, 'When generating training samples, an explanation must be provided'
+
+
         output_texts = []
         for i in range(len(samples['statement'])):
             context = samples['context'][i]
             statement = samples['statement'][i]
             label = samples['label'][i]
-            explanation = samples['explanation'][i]
+            explanation = samples['explanation'][i] if self.training else None
             output_texts.append(self.format_sample(context, statement, label, explanation))
 
         return output_texts
 
 
-    def format_sample(self, context, statement, label, explanation) -> str:
+    def format_sample(self, context, statement, label, explanation = None) -> str:
+
+        if self.training:
+            assert explanation is not None, 'When generating training samples, an explanation must be provided'
 
         yes_no_label = 'YES' if label else 'NO'
         

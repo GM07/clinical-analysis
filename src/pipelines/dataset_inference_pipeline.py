@@ -223,7 +223,7 @@ class DatasetInferencePipeline(InferencePipeline):
         raise NotImplementedError('The apply_chat_template method not implemented by the subclass. If this function\
                                   does not need to be implemented, specify a rows_to_chat callable when calling the pipeline.')
 
-class ModelDatasetInferencePipeline(DatasetInferencePipeline, ModelInferencePipeline):
+class   ModelDatasetInferencePipeline(DatasetInferencePipeline, ModelInferencePipeline):
     """
     Pipeline class for LLM inference using vLLM on a dataset's partition
     """
