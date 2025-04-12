@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 import logging
 
-from src.data.dataset import Dataset, DatasetPartition
+from src.data.dataset import DatasetPartition
 from src.pipelines.extraction_pipeline import PartitionedComparisonExtractionPipeline, ExtractionPipelineConfig
 
 logging.basicConfig(
@@ -32,7 +32,6 @@ def main():
         medcat_path=args.medcat,
         medcat_device='cuda'
     )
-    pipeline.load()
 
     partition = DatasetPartition.from_save(args.partition)
 

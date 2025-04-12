@@ -152,7 +152,8 @@ class OntologyConstrainedModel:
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     generation_config=hf_generation_config,
-                    max_new_tokens=generation_config.max_new_tokens
+                    max_new_tokens=generation_config.max_new_tokens,
+                    pad_token_id=self.tokenizer.pad_token_id,
                 )
             else:
                 self.modified_generate()
@@ -171,6 +172,7 @@ class OntologyConstrainedModel:
                     attention_mask=attention_mask,
                     generation_config=hf_generation_config,
                     max_new_tokens=generation_config.max_new_tokens,
+                    pad_token_id=self.tokenizer.pad_token_id,
                     beam_scorer=ontology_beam_scorer
                 )
             generated_tokens = generation_output

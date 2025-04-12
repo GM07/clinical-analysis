@@ -7,6 +7,8 @@ import ast
 
 import pandas as pd
 
+from src.utils import batch_elements
+
 logger = logging.getLogger(__name__)
 
 
@@ -231,6 +233,20 @@ class DatasetPartition:
         for i in self.get_unprocessed_ids():
             yield i, self[i]
 
+    def get_unprocessed_values(self):
+        return list(map(lambda x: self[x[0]], filter(lambda x: x[1] is None, self.results.items())))
+
+    def get_unprocessed_items(self):
+
+        ids = []
+        values = []
+        for i, val in self.results.items():
+            if val is None:
+                ids.append(i)
+                values.append(self[i])
+        return ids, values
+
+
     def clear_results(self):
         """
         Clear the results in the partition
@@ -262,18 +278,25 @@ class DatasetPartition:
             partition.load()
         return partition
 
+class DatasetPartitionLocker:
+
+    def __init__(self, partition: DatasetPartition):
+        self.partition = partition
+    
+
 class DatasetPartitionAnalyzer:
     """
     Analyzes in a directory of dataset partitions which partitions are processed or not. This class can also dispatch partitions
     to different jobs by returning k partition files that are not done being processed
     """
 
-    def __init__(self, partition_folder_path: str, extension = '.partition'):
+    def __init__(self, partition_folder_path: str, extension = '.partition', log: bool = False):
         self.partition_folder_path = partition_folder_path
         self.extension = extension
         self.partitions: List[DatasetPartition] = []
         self.partition_file_names: List[str] = []
         self.partition_error_file_names: List[str] = []
+        self.log = log
 
         self.verify_partition_folder_path()
         self.load_partitions()
@@ -305,7 +328,8 @@ class DatasetPartitionAnalyzer:
             if len(partition_file_name) < len(self.extension) or partition_file_name[-len(self.extension):] != self.extension:
                 continue
 
-            logger.info(f'Loading {partition_file_name}')
+            if self.log:
+                logger.info(f'Loading {partition_file_name}')
             try:
                 partition = DatasetPartition.from_save(
                     path=os.path.join(self.partition_folder_path, partition_file_name),
@@ -321,7 +345,7 @@ class DatasetPartitionAnalyzer:
         self.partitions = list(map(lambda x: x[1], self.partitions))
 
 
-    def get_next_partitions(self, max_partitions, full_path: bool = True):
+    def get_next_partitions(self, max_partitions: int = -1, full_path: bool = True):
         """
         Returns at most `max_partitions` partition file names linked to partitions that
         are not done being processed.
@@ -331,14 +355,14 @@ class DatasetPartitionAnalyzer:
             full_path: Whether to return the full path of the partitions or just the file name
 
         Returns:
-        List of strings containing the partitions that are not processed
+        List of strings containing the partitions paths that are not processed
         """
         results = []
         for partition_file_name, partition in zip(self.partition_file_names, self.partitions):
             if not partition.is_completed():
                 results.append(partition_file_name)
 
-            if len(results) >= max_partitions:
+            if max_partitions > 0 and len(results) >= max_partitions:
                 break
 
         if full_path:

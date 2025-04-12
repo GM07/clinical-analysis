@@ -38,8 +38,6 @@ def main():
         medcat_path=args.medcat,
         medcat_device='cuda'
     )
-    print('Loading pipeline')
-    pipeline.load()
 
     print('Extracting dataset')
     output_dataset = pipeline(dataset)

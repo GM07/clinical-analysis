@@ -39,8 +39,6 @@ def main():
         medcat_device='cuda'
     )
 
-    print('Loading pipeline')
-    pipeline.load()
 
     extraction_config = ExtractionPipelineConfig(nb_concepts=args.nb_concepts)
 

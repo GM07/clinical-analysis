@@ -6,6 +6,7 @@ from typing import List
 
 from datasets import Dataset as HuggingFaceDataset
 
+from src.data.dataset import DatasetPartition
 from src.domain_adaptation.domain_class_frequency import DomainClassFrequency
 from src.generation.domain_ontology_prompter import DomainOntologyPrompter
 from src.generation.ontology_beam_scorer import GenerationConfig
@@ -74,6 +75,10 @@ class DomainExtractionPipeline(ExtractionPipeline):
             constrained_model=self.ontology_constrained_model
         )
 
+        if generation_config.batch_size != extraction_config:
+            logger.info(f"Mismatch between generation's batch size and extraction's batch size, updating generation to {extraction_config.batch_size}")
+            generation_config.batch_size = extraction_config.batch_size
+        
         result = prompter(
             clinical_notes=clinical_notes,
             domain_concept_ids=self.concept_set,
@@ -83,13 +88,54 @@ class DomainExtractionPipeline(ExtractionPipeline):
 
         if extraction_config.save_internal_dataset:
             answers, dataset = result
-            small_dataset = dataset.remove_columns(['TEXT', 'prompt']) # clinical notes can be large so we don't save these
+            small_dataset = dataset.remove_columns(['clinical_note']) # clinical notes can be large so we don't save these
             small_dataset.to_csv(extraction_config.internal_dataset_saving_path)
 
         if extraction_config.return_internal_dataset:
             return answers, dataset
 
-        return answers
+        return result
+
+
+class PartitionedDomainExtractionPipeline(DomainExtractionPipeline):
+
+    def __call__(
+        self, 
+        partition: DatasetPartition,
+        generation_config: GenerationConfig = GenerationConfig.ontology_beam_search(batch_size=1),
+        extraction_config: DomainExtractionPipelineConfig = DomainExtractionPipelineConfig()
+    ):
+        """
+        Executes the pipeline on the dataset
+
+        Args:
+            clinical_notes: Clinical notes to run the pipeline on
+            generation_config: Configuration for the generation
+            extraction_config: Configuration for the extraction
+
+        Returns:
+        Tuple containing three elements : [extractions_greedy, extractions_beam, extractions_constrained]
+        The extractions will be a list of the same size as `clinical_notes` and each element will contain
+        a dictionary mapping the detecting 
+        """
+
+        ids, values = partition.get_unprocessed_items()
+        notes = list(map(lambda x: x['TEXT'], values))
+        logger.info(f'Processing {len(notes)} clinical notes in this partition')
+        results = DomainExtractionPipeline.__call__(
+            self, 
+            clinical_notes=notes, 
+            generation_config=generation_config,
+            extraction_config=extraction_config
+        )
+
+        saving_results = []
+        for id, res in zip(ids, results):
+            saving_results.append((id, res))
+
+        partition.save_results(saving_results)
+
+
 
 class ComparisonDomainExtractionPipeline(DomainExtractionPipeline):
 
@@ -111,32 +157,55 @@ class ComparisonDomainExtractionPipeline(DomainExtractionPipeline):
         beam_config = GenerationConfig.beam_search(extraction_config.batch_size)
         greedy_config = GenerationConfig.greedy_search(extraction_config.batch_size)
 
-        configs = {
-            'greedy': greedy_config, 
-            'beam': beam_config,
-            'constrained': constrained_config
-        }
+        greedy = DomainExtractionPipeline.__call__(
+            self,
+            clinical_notes=clinical_notes,
+            generation_config=greedy_config,
+            extraction_config=extraction_config
+        )
 
-        results = {}
+        beam = DomainExtractionPipeline.__call__(
+            self,
+            clinical_notes=clinical_notes,
+            generation_config=beam_config,
+            extraction_config=extraction_config
+        )
 
-        for name, config in configs.items():
-            df_saving_path = f'{extraction_config.internal_dataset_saving_path.replace(".csv", f"{name}.csv")}' if extraction_config.internal_dataset_saving_path else None
+        constrained = DomainExtractionPipeline.__call__(
+            self,
+            clinical_notes=clinical_notes,
+            generation_config=constrained_config,
+            extraction_config=extraction_config
+        )
 
-            if os.path.exists(df_saving_path):
-                logger.info(f'Skipping config {name} as the dataset already exists')
-                saved_result = HuggingFaceDataset.from_csv(df_saving_path)
-                results[name] = DomainOntologyPrompter.group_results_by_notes(saved_result)
+        return (greedy, beam, constrained)
 
-            logger.info(f'Trying config : {name}')
-            extraction_config.return_internal_dataset = False
-            extraction_config.internal_dataset_saving_path = df_saving_path
-            result = DomainExtractionPipeline.__call__(
-                self,
-                clinical_notes=clinical_notes,
-                generation_config=config,
-                extraction_config=extraction_config
-            )
 
-            results[name] = result
+class PartitionedComparisonDomainExtractionPipeline(DomainExtractionPipeline):
 
-        return results
+    def __call__(self, partition: DatasetPartition, extraction_config: DomainExtractionPipelineConfig = DomainExtractionPipelineConfig()):
+        """
+        Executes the pipeline on the dataset
+
+        Args:
+            clinical_notes: Clinical notes to run the pipeline on
+            generation_config: Configuration for the generation
+            extraction_config: Configuration for the extraction
+
+        Returns:
+        Tuple containing three elements : [extractions_greedy, extractions_beam, extractions_constrained]
+        The extractions will be a list of the same size as `clinical_notes` and each element will contain
+        a dictionary mapping the detecting 
+        """
+
+        ids, values = partition.get_unprocessed_items()
+        notes = list(map(lambda x: x['TEXT'], values))
+        logger.info(f'Processing {len(notes)} clinical notes in this partition')
+        normal, beam, constrained = ComparisonDomainExtractionPipeline.__call__(self, notes, extraction_config)
+
+        saving_results = []
+        for id, n, b, c in zip(ids, normal, beam, constrained):
+            saving_results.append((id, (n, b, c)))
+
+        partition.save_results(saving_results)
+

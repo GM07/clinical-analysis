@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 import logging
+from typing import List
 
-from tqdm import tqdm
 from datasets import Dataset as HuggingFaceDataset
 
 from src.data.dataset import DatasetPartition
-from src.generation.ontology_prompter import OntologyPrompter, OntologyConstrainedModel
+from src.generation.guided_ontology_prompter import GuidedOntologyPrompter
+from src.generation.ontology_constrained_model import OntologyConstrainedModel
 from src.generation.ontology_beam_scorer import GenerationConfig
 from src.ontology.medcat_annotator import MedCatAnnotator
 from src.ontology.snomed import Snomed
@@ -17,9 +18,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ExtractionPipelineConfig:
 
-    batch_size: int = 5 # Number of concepts to process in parallel
     nb_concepts: int = 5 # Number of total concepts to process
     save_frequency: int = 1 # Number of results saved between partition saves
+
+
+@dataclass
+class ComparisonExtractionPipelineConfig(ExtractionPipelineConfig):
+    batch_size: int = 5
 
 """
 Types of extraction pipelines based on the decoding method used :
@@ -95,61 +100,30 @@ class ExtractionPipeline(Pipeline):
             apply_chat_template=self.apply_chat_template
         )
 
-    def __call__(self, clinical_note: str, generation_config: GenerationConfig = GenerationConfig.ontology_beam_search(), extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
+    def __call__(self, clinical_notes: List[str], generation_config: GenerationConfig = GenerationConfig.ontology_beam_search(), extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
         """
         Executes the pipeline on the dataset
 
         Args:
-            clinical_note: Clinical note onto which the pipeline will be ran un
+            clinical_notes: Clinical notes onto which the pipeline will be ran on
             generation_config: Configuration for the generation
             extraction_config: Configuration for the extraction
         """
 
-        prompter = OntologyPrompter(
+        prompter = GuidedOntologyPrompter(
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
             system_prompt=self.system_prompt
         )
 
-        results = prompter.start_multiple(
-            clinical_notes=[clinical_note],
+        results = prompter(
+            clinical_notes=clinical_notes,
             top_n=extraction_config.nb_concepts,
-            batch_size=extraction_config.batch_size,
             generation_config=generation_config
         )
 
         return results
-
-    def get_results(clinical_note: str, prompter: OntologyPrompter, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
-        normal_config = GenerationConfig.greedy_search()
-        beam_config = GenerationConfig.beam_search()
-        constrained_config = GenerationConfig.ontology_beam_search()
-
-        normal_attr_by_id = prompter.start_multiple(
-            clinical_notes=[clinical_note],
-            top_n=extraction_config.nb_concepts,
-            batch_size=extraction_config.batch_size,
-            generation_config=normal_config
-        )
-
-        beam_attr_by_id = prompter.start_multiple(
-            clinical_notes=[clinical_note],
-            top_n=extraction_config.nb_concepts,
-            batch_size=extraction_config.batch_size,
-            generation_config=beam_config
-        )
-
-        constrained_attr_by_id = prompter.start_multiple(
-            clinical_notes=[clinical_note],
-            top_n=extraction_config.nb_concepts,
-            batch_size=extraction_config.batch_size,
-            generation_config=constrained_config
-        )
-
-        results = (normal_attr_by_id, beam_attr_by_id, constrained_attr_by_id)
-        return results
-
 
 class DatasetExtractionPipeline(ExtractionPipeline):
     """
@@ -173,23 +147,19 @@ class DatasetExtractionPipeline(ExtractionPipeline):
             extraction_config: Configuration for the extraction
         """
 
-        prompter = OntologyPrompter(
+        prompter = GuidedOntologyPrompter(
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
             system_prompt=self.system_prompt
         )
 
-        results = []
-        for row in tqdm(dataset, total=len(dataset)):
-            clinical_note = row['TEXT']
-            attributes = prompter.start_multiple(
-                clinical_notes=[clinical_note],
-                top_n=extraction_config.nb_concepts,
-                batch_size=extraction_config.batch_size,
-                generation_config=generation_config
-            )
-            results.append(attributes)
+        results = prompter(
+            clinical_notes=dataset['TEXT'],
+            top_n=extraction_config.top_n,
+            generation_config=generation_config,
+            return_dataset=False
+        )
 
         dataset = dataset.add_column('OUTPUT', results)
         return dataset
@@ -240,30 +210,27 @@ class PartitionedExtractionPipeline(ExtractionPipeline):
             extraction_config: Configuration for the extraction
         """
 
-        prompter = OntologyPrompter(
+        prompter = GuidedOntologyPrompter(
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
             system_prompt=self.system_prompt
         )
 
-        results = []
-        for i, value in tqdm(partition.iterate(), total=partition.nb_elements_unprocessed()):
-            clinical_note = value['TEXT']
-            attributes = prompter.start_multiple(
-                clinical_notes=[clinical_note],
-                top_n=extraction_config.nb_concepts,
-                batch_size=extraction_config.batch_size,
-                generation_config=generation_config
-            )
-            results.append((i, attributes))
+        ids, values = partition.get_unprocessed_items(separate=True)
+        notes = list(filter(lambda x: x['TEXT'], values))
+        results = prompter(
+            clinical_notes=notes,
+            top_n=extraction_config.nb_concepts,
+            generation_config=generation_config,
+            return_dataset=False
+        )
 
-            if i % extraction_config.save_frequency == 0:
-                partition.save_results(results)
-                results = []
+        saving_results = []
+        for id, result in zip(ids, results):
+            saving_results.append((id, result))
 
-        partition.save_results(results)
-
+        partition.save_results(saving_results)
 
 class ComparisonExtractionPipeline(ExtractionPipeline):
     """
@@ -295,7 +262,7 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
         """
         super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt, apply_chat_template)
 
-    def __call__(self, clinical_note: str, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
+    def __call__(self, clinical_notes: List[str], extraction_config: ComparisonExtractionPipelineConfig = ComparisonExtractionPipelineConfig()):
         """
         Executes the pipeline on the dataset
 
@@ -304,38 +271,35 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
             extraction_config: Configuration for the extraction
         """
 
-        prompter = OntologyPrompter(
+        prompter = GuidedOntologyPrompter(
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
             system_prompt=self.system_prompt
         )
 
-        return self.get_results(clinical_note, prompter, extraction_config)
+        return self.get_results(clinical_notes, prompter, extraction_config)
 
-    def get_results(clinical_note: str, prompter: OntologyPrompter, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
-        normal_config = GenerationConfig.greedy_search()
-        beam_config = GenerationConfig.beam_search()
-        constrained_config = GenerationConfig.ontology_beam_search()
+    def get_results(self, clinical_notes: List[str], prompter: GuidedOntologyPrompter, extraction_config: ComparisonExtractionPipelineConfig = ComparisonExtractionPipelineConfig()):
+        normal_config = GenerationConfig.greedy_search(batch_size=extraction_config.batch_size)
+        beam_config = GenerationConfig.beam_search(batch_size=extraction_config.batch_size)
+        constrained_config = GenerationConfig.ontology_beam_search(batch_size=extraction_config.batch_size)
 
-        normal_attr_by_id = prompter.start_multiple(
-            clinical_notes=[clinical_note],
+        normal_attr_by_id = prompter(
+            clinical_notes=clinical_notes,
             top_n=extraction_config.nb_concepts,
-            batch_size=extraction_config.batch_size,
             generation_config=normal_config
         )
 
-        beam_attr_by_id = prompter.start_multiple(
-            clinical_notes=[clinical_note],
+        beam_attr_by_id = prompter(
+            clinical_notes=clinical_notes,
             top_n=extraction_config.nb_concepts,
-            batch_size=extraction_config.batch_size,
             generation_config=beam_config
         )
 
-        constrained_attr_by_id = prompter.start_multiple(
-            clinical_notes=[clinical_note],
+        constrained_attr_by_id = prompter(
+            clinical_notes=clinical_notes,
             top_n=extraction_config.nb_concepts,
-            batch_size=extraction_config.batch_size,
             generation_config=constrained_config
         )
 
@@ -348,7 +312,7 @@ class DatasetComparisonExtractionPipeline(ComparisonExtractionPipeline):
     It will not use vllm.
     """
 
-    def __call__(self, dataset: HuggingFaceDataset, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
+    def __call__(self, dataset: HuggingFaceDataset, extraction_config: ComparisonExtractionPipelineConfig = ComparisonExtractionPipelineConfig()):
         """
         Executes the pipeline on the dataset
 
@@ -357,20 +321,18 @@ class DatasetComparisonExtractionPipeline(ComparisonExtractionPipeline):
             extraction_config: Configuration for the extraction
         """
 
-        prompter = OntologyPrompter(
+        prompter = GuidedOntologyPrompter(
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
             system_prompt=self.system_prompt
         )
 
-        results = []
-        for row in tqdm(dataset, total=len(dataset)):
-            clinical_note = row['TEXT']
-            result = ComparisonExtractionPipeline.get_results(self, clinical_note, prompter, extraction_config)
-            results.append(result)
 
-        dataset = dataset.add_column('OUTPUT', results)
+        results = ComparisonExtractionPipeline.get_results(self, dataset['TEXT'], prompter, extraction_config)
+        dataset = dataset.add_column('normal', results[0])
+        dataset = dataset.add_column('beam', results[1])
+        dataset = dataset.add_column('constrained', results[2])
 
         return dataset
 
@@ -379,7 +341,7 @@ class PartitionedComparisonExtractionPipeline(ComparisonExtractionPipeline):
     Same as `ComparisonExtractionPipeline` but takes a partition as an input and returns a saves the results in the partition.
     """
 
-    def __call__(self, partition: DatasetPartition, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
+    def __call__(self, partition: DatasetPartition, extraction_config: ComparisonExtractionPipelineConfig = ComparisonExtractionPipelineConfig()):
         """
         Executes the pipeline on the dataset
 
@@ -388,22 +350,20 @@ class PartitionedComparisonExtractionPipeline(ComparisonExtractionPipeline):
             extraction_config: Configuration for the extraction
         """
 
-        prompter = OntologyPrompter(
+        prompter = GuidedOntologyPrompter(
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
             system_prompt=self.system_prompt
         )
 
-        results = []
-        for i, value in tqdm(partition.iterate(), total=partition.nb_elements_unprocessed()):
-            clinical_note = value['TEXT']
-            results = ComparisonExtractionPipeline.get_results(self, clinical_note, prompter, extraction_config)
 
-            results.append((i, results))
+        ids, values = partition.get_unprocessed_items()
+        notes = list(map(lambda x: x['TEXT'], values))
+        normal, beam, constrained = ComparisonExtractionPipeline.get_results(self, notes, prompter, extraction_config)
 
-            if i % extraction_config.save_frequency == 0:
-                partition.save_results(results)
-                results = []
+        saving_results = []
+        for id, n, b, c in zip(ids, normal, beam, constrained):
+            saving_results.append((id, (n, b, c)))
 
-        partition.save_results(results)
+        partition.save_results(saving_results)

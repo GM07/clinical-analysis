@@ -1,11 +1,14 @@
-from typing import List
-from collections import defaultdict
-import logging
 
+from itertools import groupby
+from operator import itemgetter
+from collections import defaultdict
+from typing import List
+
+import logging
+from datasets import Dataset
 from tqdm import tqdm
 
-from src.domain_adaptation.domain_class_frequency import DomainClassFrequency
-from src.generation.ontology_beam_scorer import GenerationInput, GenerationConfig
+from src.generation.ontology_beam_scorer import GenerationConfig, GenerationInput
 from src.generation.ontology_constrained_model import OntologyConstrainedModel, OntologyPromptTemplate
 from src.ontology.annotator import Annotator
 from src.ontology.snomed import Snomed
@@ -13,19 +16,19 @@ from src.ontology.snomed import Snomed
 logger = logging.getLogger(__name__)
 
 class OntologyPrompter:
-    # v1.0 : Does not support clinical note batching, only concept batching
-    
+    """
+    Abstract Class responsible for extracting data from clinical notes.
+    """
     def __init__(
         self, 
         snomed: Snomed, 
-        annotator: Annotator, 
-        constrained_model: OntologyConstrainedModel = None, 
+        constrained_model: OntologyConstrainedModel, 
+        annotator: Annotator = None, 
         template: OntologyPromptTemplate = OntologyPromptTemplate(),
-        dataset_mode: bool = False,
-        system_prompt: str = None
+        system_prompt: str = None,
     ):
         """
-        Initializes an OntologyPrompter object that handles the extraction of medical concepts from text.
+        Initializes an GuidedOntologyPrompter object that handles the extraction of medical concepts from text.
 
         Args:
             constrained_model: An OntologyConstrainedModel instance used to generate responses
@@ -34,138 +37,60 @@ class OntologyPrompter:
             template: An OntologyPromptTemplate instance defining the prompt format (default: OntologyPromptTemplate())
             dataset_mode: Whether the prompt will be stored in a dataset instead of being sent to the model
             system_prompt: System prompt used to generate the prompts
+
+            guide_with_annotator: Whether to guide the prompting process with the annotator or simply prompt for every concept. 
+            If True: The prompter will first tag all concepts in the clinical notes, get the ancestors and compute which concepts are present in the domain set
+            If False: The prompter will ask the model to generate answers for all concepts in the domain set
         """
-        
         self.constrained_model = constrained_model
         self.snomed = snomed
         self.annotator = annotator
         self.template = template
-        self.dataset_mode = dataset_mode
         self.system_prompt = system_prompt
-        
-        self.attributes_by_id = []
 
-        self.current_note_id = 0
-    
-    def start_multiple(self, clinical_notes: List[str], top_n=5, batch_size=1, generation_config: GenerationConfig = GenerationConfig(), ids: List[str] = None):
-        """
-        Prompts a model on multiple clinical notes
-
-        Args:
-            clinical_notes: Clinical notes used to extract information from
-            top_n: Number maximal concepts to extract from each clinical note
-            batch_size: Number of concepts to process in parallel per clinical note (not used if `self.dataset_mode` is `True`) (will override generation_config.batch_size)
-            generation_config: Configuration guiding the model's generation (not used if `self.dataset_mode` is `True`)
-            ids: Ids indentifying each clinical note (used if `self.dataset_mode` is `True` to store the prompts)
-
-        Returns:
-        Tuple of dictionaries where the first dictionary contains {concept_id: extraction} and the 
-        second dictionary contains {concept_label: extraction}
-        """
-
-        if self.dataset_mode:
-            return self.start_dataset(clinical_notes, ids, top_n=top_n)
-        
-        # self.attributes = []
-        self.attributes_by_id = []
-
-        for i, note in enumerate(clinical_notes):
-            self.current_note_id = i
-            self.attributes_by_id.append({})
-            self.start(note, top_n=top_n, batch_size=batch_size, generation_config=generation_config)
-
-            return self.attributes_by_id.copy()
-    
-    def start_dataset(self, clinical_notes: List[str], ids: List[str], top_n: int = 5):
-        """
-        Starts the extraction on a dataset
-
-        Args:
-            clinical_notes: Clinical notes used to extract information from
-            ids: Ids indentifying each clinical note
-            top_n: Number maximal concepts to extract from each clinical note
-
-        Returns:
-        Dictionary where the keys are the ids and the values are the prompts
-        """
-
-        assert len(ids) == len(clinical_notes), 'The number of ids should be the same as the number of clinical notes'
-        
-        logger.info(f'Generating prompts for dataset')
-        dataset = defaultdict(list)
-
-        for id, clinical_note in tqdm(zip(ids, clinical_notes), total=len(ids)):
-            most_frequent_concepts, _ = DomainClassFrequency.get_most_frequent_concepts(
-                text=clinical_note, 
-                snomed=self.snomed, 
-                annotator=self.annotator, 
-                top_n=top_n
-            )
-            prompts = self.create_prompts(clinical_note, most_frequent_concepts)
-            dataset[id] = prompts
-
-        return dataset
-
-    def start(self, clinical_note: str, top_n: int = 5, batch_size: int = 1, generation_config: GenerationConfig = GenerationConfig()):
-        """
-        Retrieves the most frequent concepts present in the clinical note and extracts them (or stores the prompt if `self.dataset_mode` is `True`)
-
-        Args:
-            clinical_note: Clinical note used to extract information from
-            top_n: Number maximal concepts to extract from each clinical note
-            batch_size: Number of concepts to process in parallel per clinical note (not used if `self.dataset_mode` is `True`)
-            generation_config: Configuration guiding the model's generation (not used if `self.dataset_mode` is `True`)
-        
-        Returns:
-        Dictionary containing {concept_id: extraction}
-        """ 
-        most_frequent_concepts, _ = DomainClassFrequency.get_most_frequent_concepts(
-            text=clinical_note, 
-            snomed=self.snomed, 
-            annotator=self.annotator, 
-            top_n=top_n
-        )
-
-        if len(most_frequent_concepts) == 0:
-            return
-        
-        logger.debug(f'Number of concepts extracted : {len(most_frequent_concepts)}')
-        logger.debug(f'Most frequent concepts : {list(map(lambda x: x.label, self.snomed.convert_ids_to_classes(most_frequent_concepts)))}')
-        
-        for i in range((len(most_frequent_concepts) // batch_size) + 1):
-            start = i * batch_size
-            end = min(len(most_frequent_concepts), (i + 1) * batch_size)
-            concept_ids = most_frequent_concepts[start:end]
-
-            self.extract_attribute(clinical_note, concept_ids, generation_config=generation_config)
-
-    def extract_attribute(
+    def process_dataset(
         self, 
-        clinical_note: str, 
-        concept_ids: List[str], 
-        generation_config: GenerationConfig = GenerationConfig()
+        dataset: Dataset, 
+        generation_config: GenerationConfig = GenerationConfig, 
+        return_dataset: bool = True,
+        prompt_col: str = 'prompt',
+        clinical_note_col: str = 'clinical_note',
+        concept_id_col: str = 'concept_id'
     ):
-        """
-        Performs extraction step on a clinical note based on certain concepts from the ontology. It 
-        then stores the extractions in `self.attributes_by_id`
-
-        Args:
-            clinical_note: Clinical note from which the information linked to concepts must be extracted
-            concept_ids: Concept ids present in the clinical note guiding the extraction phase
-            generation_config: Configuration guiding the model's generation
-        """
+        results = []
+        batch_size = generation_config.batch_size
+        for batch in tqdm(dataset.iter(batch_size=batch_size), total=len(dataset) // batch_size + 1, desc='Processing batches...'):
+            generation_input = GenerationInput(
+                prompts=batch[prompt_col], 
+                clinical_notes=batch[clinical_note_col], 
+                concept_ids=batch[concept_id_col],
+                system_prompt=self.system_prompt
+            )
+            
+            generation_config.batch_size = len(generation_input.prompts)
+            answers = self.constrained_model.generate(generation_input, generation_config)
+            answers = self.process_answers(answers)
+            results.extend(answers)
         
-        if len(concept_ids) == 0:
-            return
+        dataset = dataset.add_column('result', results)
 
-        prompts = self.create_prompts(clinical_note, concept_ids)
+        answers = self.group_results_by_notes(dataset)
+        
+        if return_dataset:
+            small_dataset = dataset.remove_columns(['prompt']) # Prompt can be reconstructed
+            return answers, small_dataset
+        return answers
 
-        # Generate answers
-        generation_input = GenerationInput(prompts=prompts, clinical_notes=[clinical_note] * len(prompts), concept_ids=concept_ids, system_prompt=self.system_prompt)
-        generation_config.batch_size = len(prompts)
-        answers = self.constrained_model.generate(generation_input, generation_config)
-
-        self.store_extractions_from_generation(concept_ids, answers)
+    def process_answers(self, answers):
+        final_answers = []
+        for answer in answers:
+            comparable_answer = answer.strip().lower()
+            if 'n/a'.lower() in comparable_answer or 'no information' in comparable_answer or 'does not mention' in comparable_answer or 'no mention' in comparable_answer:
+                # Some models do not follow instructions to simply answer N/A, so we need to verify more cases
+                final_answers.append('N/A')
+            else:
+                final_answers.append(answer.strip())
+        return final_answers
 
     def create_prompts(self, clinical_note, concept_ids: List[str]):
         """
@@ -209,24 +134,13 @@ class OntologyPrompter:
             property_sentence = '' if len(current_property_knowledge.strip()) == 0 else f'{concept_label} is characterized by : \n- {current_property_knowledge}\n'
             return property_sentence
 
-
-    def store_extractions_from_generation(self, concept_ids: List[str], generations: List[str]):
-        """
-        Stores the extractions from the model's generations
-
-        Args:
-            concept_ids: List of concept ids used in the generation
-            generations: Model's generations linked to `concept_ids`
-        """
-
-        if len(concept_ids) != len(generations):
-            raise ValueError(f'Length of the questions ({len(concept_ids)}) should be the same as the length of the generations ({len(generations)})')
-
-        for concept_id, answer in zip(concept_ids, generations):
-
-            valid_answer = 'N/A' not in answer.strip()
-            if len(answer.strip()) > 0 and valid_answer:
-                self.attributes_by_id[self.current_note_id][concept_id] = answer
-            else:
-                self.attributes_by_id[self.current_note_id][concept_id] = 'N/A'
-
+    @staticmethod
+    def group_results_by_notes(dataset: Dataset):
+        # Group by note_id and create the result list
+        result = []
+        for _, group in groupby(dataset, key=itemgetter('note_id')):
+            # Convert group to list to work with it
+            group_list = list(group)
+            result.append({row['concept_id']: row['result'] for row in group_list})
+        
+        return result
