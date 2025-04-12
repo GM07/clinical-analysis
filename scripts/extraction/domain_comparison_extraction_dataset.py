@@ -22,9 +22,10 @@ def main():
 
     print('Called with arguments : ', args)
     experiment = DomainExtractionExperiment(args.experiment_folder)
+    print('Experiment settings : ', experiment.__dict__)
 
     dataset = HuggingFaceDataset.from_csv(experiment.dataset)
-
+    
     pipeline = ComparisonDomainExtractionPipeline(
         checkpoint_path=experiment.checkpoint,
         tokenizer_path=experiment.tokenizer,

@@ -29,16 +29,17 @@ class DomainExtractionExperiment:
         self.dcfs = self.yaml_config['dcfs']
         assert isinstance(self.dcfs, list), 'The dcfs must be a list'
 
-        self.checkpoint = self.yaml_config['checkpoint']
-        self.tokenizer = self.yaml_config['tokenizer']
-        self.dataset = self.yaml_config['dataset']
-        self.snomed = self.yaml_config['snomed']
-        self.snomed_cache = self.yaml_config['snomed_cache']
-        self.medcat = self.yaml_config['medcat']
+        self.checkpoint = os.path.expandvars(self.yaml_config['checkpoint'])
+        self.tokenizer = os.path.expandvars(self.yaml_config['tokenizer'])
+        self.dataset = os.path.expandvars(self.yaml_config['dataset'])
+        self.snomed = os.path.expandvars(self.yaml_config['snomed'])
+        self.snomed_cache = os.path.expandvars(self.yaml_config['snomed_cache'])
+        self.medcat = os.path.expandvars(self.yaml_config['medcat'])
         self.batch_size = self.yaml_config.get('batch_size', 1)
         self.medcat_device = self.yaml_config.get('medcat_device', 'cuda')
         self.system_prompt = self.yaml_config.get('system_prompt', None)
         self.dataset_input_column = self.yaml_config.get('dataset_input_column', 'TEXT')
+        self.apply_chat_template = self.yaml_config.get('apply_chat_template', True)
 
     def infer(self):
 

@@ -4,7 +4,7 @@ from datasets import Dataset as HuggingFaceDataset
 
 import logging
 
-logger = logging.Logger(__name__)
+logger = logging.getLogger(__name__)
 
 class MedNLIEvaluator:
 

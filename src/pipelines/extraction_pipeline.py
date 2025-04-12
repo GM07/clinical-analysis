@@ -48,7 +48,8 @@ class ExtractionPipeline(Pipeline):
         medcat_device: str = 'cuda',
         loading_config: LoadingConfig = LoadingConfig(),
         tokenizer_path: str = None,
-        system_prompt: str = None
+        system_prompt: str = None,
+        apply_chat_template: bool = True,
     ):
         """
         Args:
@@ -70,6 +71,7 @@ class ExtractionPipeline(Pipeline):
         self.medcat_device = medcat_device
         self.loading_config = loading_config
         self.system_prompt = system_prompt
+        self.apply_chat_template = apply_chat_template
 
         self.load()
 
@@ -90,7 +92,7 @@ class ExtractionPipeline(Pipeline):
             tokenizer=self.tokenizer,
             snomed=self.snomed,
             annotator=self.medcat,
-            apply_chat_template=True
+            apply_chat_template=self.apply_chat_template
         )
 
     def __call__(self, clinical_note: str, generation_config: GenerationConfig = GenerationConfig.ontology_beam_search(), extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
@@ -210,7 +212,8 @@ class PartitionedExtractionPipeline(ExtractionPipeline):
         medcat_device: str = 'cuda',
         loading_config: LoadingConfig = LoadingConfig(),
         tokenizer_path: str = None,
-        system_prompt: str = None
+        system_prompt: str = None,
+        apply_chat_template: bool = True,
     ):
         """
         Args:
@@ -220,7 +223,7 @@ class PartitionedExtractionPipeline(ExtractionPipeline):
             medcat_path: Path to medcat annotator model
             medcat_device: Device used by the medcat annotator
         """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt, apply_chat_template)
 
     def __call__(
         self, 
@@ -278,7 +281,8 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
         medcat_device: str = 'cuda',
         loading_config: LoadingConfig = LoadingConfig(),
         tokenizer_path: str = None,
-        system_prompt: str = None
+        system_prompt: str = None,
+        apply_chat_template: bool = True
     ):
         """
         Args:
@@ -289,7 +293,7 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
             medcat_device: Device used by the medcat annotator
             loading_config: Loading configuration used to load the model
         """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt, apply_chat_template)
 
     def __call__(self, clinical_note: str, extraction_config: ExtractionPipelineConfig = ExtractionPipelineConfig()):
         """

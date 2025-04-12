@@ -13,7 +13,7 @@ from src.generation.ontology_beam_scorer import GenerationInput, GenerationConfi
 from src.ontology.annotator import Annotator
 from src.ontology.snomed import Snomed
 
-logger = logging.Logger(__name__)
+logger = logging.getLogger(__name__)
 
 class DomainOntologyPrompter:
     # v2.0 : Supports note batching
@@ -116,9 +116,9 @@ class DomainOntologyPrompter:
 
         id = 0
         note_id = 0
-        for clinical_note in tqdm(clinical_notes, total=len(clinical_notes)):
+        for clinical_note in tqdm(clinical_notes, total=len(clinical_notes), desc='Preparing dataset for processing'):
 
-            domain_concepts = domain_concept_ids if self.guide_with_annotator else DomainClassFrequency.get_domain_concepts(
+            domain_concepts = domain_concept_ids if not self.guide_with_annotator else DomainClassFrequency.get_domain_concepts(
                 text=clinical_note, 
                 snomed=self.snomed, 
                 annotator=self.annotator, 
@@ -180,7 +180,8 @@ class DomainOntologyPrompter:
             property_sentence = '' if len(current_property_knowledge.strip()) == 0 else f'{concept_label} is characterized by : \n- {current_property_knowledge}\n'
             return property_sentence
 
-    def group_results_by_notes(self, dataset: Dataset):
+    @staticmethod
+    def group_results_by_notes(dataset: Dataset):
         # Group by note_id and create the result list
         result = []
         for _, group in groupby(dataset, key=itemgetter('note_id')):

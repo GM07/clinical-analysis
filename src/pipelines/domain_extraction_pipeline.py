@@ -1,7 +1,10 @@
 from collections import defaultdict
 from dataclasses import dataclass
 import logging
+import os
 from typing import List
+
+from datasets import Dataset as HuggingFaceDataset
 
 from src.domain_adaptation.domain_class_frequency import DomainClassFrequency
 from src.generation.domain_ontology_prompter import DomainOntologyPrompter
@@ -10,7 +13,7 @@ from src.pipelines.extraction_pipeline import ExtractionPipeline
 from src.model_registry import LoadingConfig
 
 
-logger = logging.Logger(__name__)
+logger = logging.getLogger(__name__)
 
 @dataclass
 class DomainExtractionPipelineConfig:
@@ -31,11 +34,14 @@ class DomainExtractionPipeline(ExtractionPipeline):
         medcat_device: str = 'cuda', 
         loading_config: LoadingConfig = ..., 
         tokenizer_path: str = None, 
-        system_prompt: str = None
+        system_prompt: str = None,
+        apply_chat_template: bool = True,
     ):
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt)
+        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt, apply_chat_template)
 
         self.dcf_paths = dcf_paths
+
+        self.load_dcfs()
 
     def load_dcfs(self):
         try:
@@ -111,12 +117,19 @@ class ComparisonDomainExtractionPipeline(DomainExtractionPipeline):
             'constrained': constrained_config
         }
 
-        results = defaultdict(list)
+        results = {}
 
         for name, config in configs.items():
-            logger.info(f'Trying config : ', name)
+            df_saving_path = f'{extraction_config.internal_dataset_saving_path.replace(".csv", f"{name}.csv")}' if extraction_config.internal_dataset_saving_path else None
+
+            if os.path.exists(df_saving_path):
+                logger.info(f'Skipping config {name} as the dataset already exists')
+                saved_result = HuggingFaceDataset.from_csv(df_saving_path)
+                results[name] = DomainOntologyPrompter.group_results_by_notes(saved_result)
+
+            logger.info(f'Trying config : {name}')
             extraction_config.return_internal_dataset = False
-            extraction_config.internal_dataset_saving_path = f'{extraction_config.internal_dataset_saving_path.replace(".csv", f"{name}.csv")}' if extraction_config.internal_dataset_saving_path else None
+            extraction_config.internal_dataset_saving_path = df_saving_path
             result = DomainExtractionPipeline.__call__(
                 self,
                 clinical_notes=clinical_notes,
@@ -124,6 +137,6 @@ class ComparisonDomainExtractionPipeline(DomainExtractionPipeline):
                 extraction_config=extraction_config
             )
 
-            results[name].append(result)
+            results[name] = result
 
         return results
