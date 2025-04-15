@@ -1,8 +1,12 @@
 from typing import Callable
-from src.pipelines.dataset_inference_pipeline import ModelDatasetInferencePipeline
+import logging
+
 from datasets import Dataset as HuggingFaceDataset
 
-import logging
+from src.models.halloumi import HallOumi
+from src.models.prometheus import Prometheus
+from src.pipelines.dataset_inference_pipeline import ModelDatasetInferencePipeline
+from src.pipelines.model_inference_pipeline import ClassifierModelInferencePipeline
 
 logger = logging.getLogger(__name__)
 
@@ -58,33 +62,8 @@ class MedNLIEvaluator:
         return self.dataset
 
 
+
 class MedNLIPrometheusEvaluator(MedNLIEvaluator):
-
-    PROMPT_TEMPLATE = """###Task Description:
-An instruction (might include an Input inside it), a response to evaluate, and a score rubric representing a evaluation criteria are given.
-1. Write a detailed feedback that assess the quality of two responses strictly based on the given score rubric, not evaluating in general.
-2. After writing a feedback, choose a better response between Response A and Response B. You should refer to the score rubric.
-3. The output format should look as follows: "(write a feedback for criteria) [RESULT] (A or B)"
-4. Please do not generate any other opening, closing, and explanations.
-
-###Instruction:
-{instruction}
-
-###Response A:
-{response_A}
-
-###Response B:
-{response_B}
-
-###Score Rubric:
-[Are the model's responses factually correct and well-supported by evidence?]
-Score 1: The model's responses are mostly incorrect or based on unfounded information.
-Score 2: The model sometimes provides factually correct responses, but inaccuracies are common.
-Score 3: The model generally provides factually correct information, though some errors occur.
-Score 4: The model often provides factually accurate information with only occasional minor errors.
-Score 5: The model consistently provides responses that are factually correct and well-supported by evidence.
-
-###Feedback: """
 
     INSTRUCTION_TEMPLATE = """Premise: {premise}
 Hypothesis: {hypothesis}
@@ -112,11 +91,64 @@ Does this premise entail this hypothesis ? Answer with yes or no only."""
                 hypothesis=x['sentence2']
             )
 
-            prompt = self.PROMPT_TEMPLATE.format(
+            prompt = Prometheus.create_prompt(
                 instruction=instruction,
-                response_A='Yes',
-                response_B='No'
+                response_a='Yes',
+                response_b='No'
             )
+
             return {'text': prompt}
         
         return dataset.map(apply_template)
+
+
+class HallOumiMedNLIEvaluator(MedNLIEvaluator):
+
+
+    def __init__(self, data_path: str, model_path: str, tokenizer_path: str = None, classifier: bool = True, ) -> None:
+        self.classifier = classifier
+        super().__init__(data_path, model_path, tokenizer_path)
+
+    def load(self):
+        self.dataset = HuggingFaceDataset.from_json(self.data_path)
+
+        if self.classifier:
+            self.pipeline = ClassifierModelInferencePipeline(self.model_path, self.tokenizer_path)
+        else:
+            self.pipeline = ModelDatasetInferencePipeline(self.model_path, self.tokenizer_path)
+
+    def __call__(self) -> HuggingFaceDataset:
+        """
+        Args:
+            positive: Whether the LLM answer will be that the statement is factual or not factual (only applicable if `classifier` = False)
+        """
+        self.dataset = self.preprocess(self.dataset)
+
+        if self.classifier:
+            results = self.pipeline.run_inference(
+                inputs=self.dataset['text'], 
+                batch_size=16, 
+                max_length=512,
+                apply_chat_template=False,
+            )
+            dataset = self.dataset.add_column('prediction', results)
+            return dataset
+        else:
+            return self.pipeline(self.dataset['text'])
+
+    def preprocess(self, dataset: HuggingFaceDataset):
+        dataset = dataset.filter(lambda x: x['gold_label'] != 'neutral')
+
+        def dataset_func_to_prompt(x):
+            prompt = self.get_prompt(x)
+            label = True if x['gold_label'] == 'contradiction' else False
+            return {'text': prompt, 'label': label}
+
+        df = dataset.map(dataset_func_to_prompt)
+        return df
+
+    def get_prompt(self, sample) -> str:
+
+        if self.classifier:
+            return HallOumi.create_prompt_classifier(sample['sentence1'], sample['sentence2'])
+        return HallOumi.create_prompt_generator(sample['sentence1'], sample['sentence2'], answer='The statement is factual')

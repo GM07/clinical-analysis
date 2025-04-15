@@ -6,9 +6,10 @@ from nltk.translate.bleu_score import sentence_bleu
 from bert_score import BERTScorer
 import re
 
-class HallucinationEvaluator:
+class HallucinationSamplesEvaluator:
     """
-    Evaluator that computes precision, recall, f1 scores on medhal dataset. It also computes the BLEU and ROUGE scores of the explanations
+    Evaluator that computes precision, recall, f1 scores on medhal dataset based on given generations. 
+    It also computes the BLEU and ROUGE scores of the explanations
     """
 
     VALID_PATTERN = r'Factual(?::)?(?:\n| |\*)*(YES|NO)'

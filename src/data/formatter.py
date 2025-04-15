@@ -52,28 +52,24 @@ class Formatter:
         self.tokenizer = tokenizer
         self.training = training
 
-    def __call__(self, x) -> List[str]:
+    def __call__(self, x) -> Dict[str, str] | Dict[str, List[str]]:
         if isinstance(x['statement'], str):
-
-            if self.training:
-                assert 'explanation' in x, 'When generating training samples, an explanation must be provided'
-
             return {'text': self.format_sample(x['context'], x['statement'], x['label'], x['explanation'])}
 
-        return {'text': self.format_batched_dict(x)}
+        return {'text': self.format_batched(x)}
 
-    def format_batched_dict(self, samples: List[Dict[str, Any]]) -> List[str]:
-
-        if self.training:
-            assert 'explanation' in samples, 'When generating training samples, an explanation must be provided'
-
+    def format_batched(self, samples: Dict[str, List[str]]) -> List[str]:
 
         output_texts = []
         for i in range(len(samples['statement'])):
             context = samples['context'][i]
             statement = samples['statement'][i]
             label = samples['label'][i]
-            explanation = samples['explanation'][i] if self.training else None
+            explanation = None
+
+            if self.training:
+                explanation = samples['explanation'][i] if samples['explanation'][i] else ''
+
             output_texts.append(self.format_sample(context, statement, label, explanation))
 
         return output_texts
@@ -82,7 +78,7 @@ class Formatter:
     def format_sample(self, context, statement, label, explanation = None) -> str:
 
         if self.training:
-            assert explanation is not None, 'When generating training samples, an explanation must be provided'
+            assert explanation is not None, 'When generating training samples, an explanation must be provided' + explanation
 
         yes_no_label = 'YES' if label else 'NO'
         

@@ -2,7 +2,7 @@ import os
 import logging
 import datetime
 
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding
 from datasets import load_from_disk
 import torch
 
@@ -108,6 +108,8 @@ class MedHalTrainer:
         assert encoded_response_template[0] in last_example_ids
         assert encoded_response_template[-1] in last_example_ids
 
+
+        # self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
         self.data_collator = DataCollatorForCompletionOnlyLM(
             response_template=encoded_response_template,
             tokenizer=self.tokenizer,
@@ -121,7 +123,7 @@ class MedHalTrainer:
         if training_folder[-1] != '/':
             training_folder += '/'
         training_folder += '{date:%Y-%m-%d_%H_%M_%S}'.format(date=datetime.datetime.now())
-        os.makedirs(training_folder)
+        os.makedirs(training_folder, exist_ok=True)
 
         logger.info(f'Created folder for training at {training_folder}')
 
@@ -147,7 +149,7 @@ class MedHalTrainer:
 
         self.trainer = SFTTrainer(
             model=self.model,
-            # tokenizer=self.tokenizer,
+            tokenizer=self.tokenizer,
             train_dataset=self.dataset['train'],
             eval_dataset=self.dataset['val'],
             data_collator=self.data_collator,
@@ -178,7 +180,7 @@ class MedHalTrainer:
                 # Other arguments
                 output_dir=training_folder,
                 max_seq_length=self.trainer_config.checkpoint_config.max_seq_len,
-                dataset_num_proc=64,
+                dataset_num_proc=96,
             )
         )
 

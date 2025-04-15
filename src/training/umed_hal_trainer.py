@@ -3,16 +3,10 @@ import logging
 import datetime
 
 from unsloth import FastLanguageModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_from_disk
-import torch
-
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM, SFTConfig
-from peft import LoraConfig, LoftQConfig
 
 from src.data.formatter import Formatter
-from src.models.loading_config import LoadingConfig
-from src.models.utils import get_4bit_quantization_config, get_8bit_quantization_config, load_model, load_tokenizer
 from src.training.trainer_config import TrainerConfig
 
 
@@ -29,25 +23,6 @@ class UMedHalTrainer:
     def load_checkpoint(self):
         logger.info(f"Loading checkpoint : {self.trainer_config.checkpoint_config.model_checkpoint}")
 
-        use_quantization = self.trainer_config.checkpoint_config.load_in_4bit or self.trainer_config.checkpoint_config.load_in_8bit
-
-        if self.trainer_config.training_config.loftq_bits:
-            # Disable quantization when loading if LoFTQ is used
-            use_quantization = False
-
-        quantization_config = None
-        if self.trainer_config.checkpoint_config.load_in_4bit:
-            quantization_config = get_4bit_quantization_config()
-        elif self.trainer_config.checkpoint_config.load_in_8bit:
-            quantization_config = get_8bit_quantization_config()
-            
-        loading_config = LoadingConfig(
-            use_quantization=use_quantization,
-            quantization_config=quantization_config,
-            pad_equals_eos=False,
-            padding_side='right',
-        )
-
         self.model, self.tokenizer = FastLanguageModel.from_pretrained(
             model_name=self.trainer_config.checkpoint_config.model_checkpoint,
             max_seq_length=self.trainer_config.checkpoint_config.max_seq_len,
@@ -55,24 +30,7 @@ class UMedHalTrainer:
             load_in_4bit=self.trainer_config.checkpoint_config.load_in_4bit,
         )
 
-        # self.model: AutoModelForCausalLM = load_model(
-        #     self.trainer_config.checkpoint_config.model_checkpoint,
-        #     loading_config=loading_config,
-        # )
-
-        # self.model.max_seq_length = self.trainer_config.checkpoint_config.max_seq_len
-
         logger.info(f'Model loaded : {self.model}')
-
-        # self.tokenizer: AutoTokenizer = load_tokenizer(
-        #     self.trainer_config.checkpoint_config.model_checkpoint,
-        #     loading_config=loading_config,
-        # )
-
-        # if self.tokenizer.pad_token is None:
-        #     logger.warning("No pad token found, setting it to <finetune-pad-token>")
-        #     self.tokenizer.add_special_tokens({'pad_token': '<finetune-pad-token>'})
-        #     self.model.resize_token_embeddings(len(self.tokenizer))
 
     def _prepare_dataset(self):
         logger.info("Preparing dataset")
@@ -129,7 +87,7 @@ class UMedHalTrainer:
         if training_folder[-1] != '/':
             training_folder += '/'
         training_folder += '{date:%Y-%m-%d_%H_%M_%S}'.format(date=datetime.datetime.now())
-        os.makedirs(training_folder)
+        os.makedirs(training_folder, exist_ok=True)
 
         logger.info(f'Created folder for training at {training_folder}')
 
@@ -148,31 +106,12 @@ class UMedHalTrainer:
             loftq_config = None, # And LoftQ
         )
 
-        peft_config = None
-        if self.trainer_config.training_config.use_lora:
-            use_loftq = self.trainer_config.training_config.loftq_bits is not None
-
-            lora_config_args = {
-                'r': self.trainer_config.training_config.r,
-                'lora_alpha': self.trainer_config.training_config.lora_alpha,
-                'lora_dropout': self.trainer_config.training_config.lora_dropout,
-                'bias': self.trainer_config.training_config.bias,
-                'use_rslora': self.trainer_config.training_config.use_rslora,
-                'target_modules': ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-                'task_type': 'CAUSAL_LM'
-            }
-
-            if use_loftq:
-                lora_config_args['loftq_config'] = LoftQConfig(loftq_bits=self.trainer_config.training_config.loftq_bits)
-                lora_config_args['init_lora_weights'] = 'loftq'
-
-            peft_config = LoraConfig(**lora_config_args)
-
         self.trainer = SFTTrainer(
             model=self.model,
             tokenizer=self.tokenizer,
             train_dataset=self.dataset['train'],
             eval_dataset=self.dataset['val'],
+            data_collator=self.data_collator,
             # data_collator=self.data_collator,
             # peft_config=peft_config,
             # packing=False,
