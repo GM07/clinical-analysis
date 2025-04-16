@@ -122,10 +122,10 @@ class MedHalTrainer:
         training_folder = self.trainer_config.training_config.output_dir
         if training_folder[-1] != '/':
             training_folder += '/'
-        training_folder += '{date:%Y-%m-%d_%H_%M_%S}'.format(date=datetime.datetime.now())
+        # training_folder += '{date:%Y-%m-%d_%H_%M_%S}'.format(date=datetime.datetime.now())
         os.makedirs(training_folder, exist_ok=True)
 
-        logger.info(f'Created folder for training at {training_folder}')
+        logger.info(f'Folder prepared for training at {training_folder}')
 
         peft_config = None
         if self.trainer_config.training_config.use_lora:
@@ -149,7 +149,7 @@ class MedHalTrainer:
 
         self.trainer = SFTTrainer(
             model=self.model,
-            tokenizer=self.tokenizer,
+            # tokenizer=self.tokenizer,
             train_dataset=self.dataset['train'],
             eval_dataset=self.dataset['val'],
             data_collator=self.data_collator,
@@ -180,7 +180,7 @@ class MedHalTrainer:
                 # Other arguments
                 output_dir=training_folder,
                 max_seq_length=self.trainer_config.checkpoint_config.max_seq_len,
-                dataset_num_proc=96,
+                dataset_num_proc=12,
             )
         )
 

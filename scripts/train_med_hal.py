@@ -1,5 +1,4 @@
 from src.training.med_hal_trainer import MedHalTrainer
-from src.training.trainer_config import TrainerConfig
 from src.training.trainer_config_parser import TrainerConfigParser
 
 from accelerate import Accelerator

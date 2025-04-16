@@ -76,11 +76,10 @@ class Formatter:
 
 
     def format_sample(self, context, statement, label, explanation = None) -> str:
-
-        if self.training:
-            assert explanation is not None, 'When generating training samples, an explanation must be provided' + explanation
-
         yes_no_label = 'YES' if label else 'NO'
+
+        if self.training and not label:
+            assert explanation is not None, f'When generating training samples, an explanation must be provided.\nStatement : {statement}\nLabel : {yes_no_label}'
         
         if self.training:
             med_hal_format_context = MEDHAL_FORMAT_TRAINING_CONTEXT
