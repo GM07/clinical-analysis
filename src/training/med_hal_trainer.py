@@ -2,8 +2,9 @@ import os
 import logging
 import datetime
 
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding
 from datasets import load_from_disk
+import torch
 
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM, SFTConfig
 from peft import LoraConfig, LoftQConfig
@@ -53,6 +54,8 @@ class MedHalTrainer:
 
         self.model.max_seq_length = self.trainer_config.checkpoint_config.max_seq_len
 
+        logger.info(f'Model loaded : {self.model}')
+
         self.tokenizer: AutoTokenizer = load_tokenizer(
             self.trainer_config.checkpoint_config.model_checkpoint,
             loading_config=loading_config,
@@ -90,7 +93,7 @@ class MedHalTrainer:
         )
 
         # Evaluate if the response template is present in the first and last examples
-        first_example = self.dataset['train'][0]["text"]
+        first_example = self.dataset['train'][-1]["text"]
         logger.info(f"Example formatted: {first_example}")
         first_example_ids = self.tokenizer.encode(first_example, add_special_tokens=False)
 
@@ -105,6 +108,8 @@ class MedHalTrainer:
         assert encoded_response_template[0] in last_example_ids
         assert encoded_response_template[-1] in last_example_ids
 
+
+        # self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
         self.data_collator = DataCollatorForCompletionOnlyLM(
             response_template=encoded_response_template,
             tokenizer=self.tokenizer,
@@ -117,10 +122,10 @@ class MedHalTrainer:
         training_folder = self.trainer_config.training_config.output_dir
         if training_folder[-1] != '/':
             training_folder += '/'
-        training_folder += '{date:%Y-%m-%d_%H_%M_%S}'.format(date=datetime.datetime.now())
-        os.makedirs(training_folder)
+        # training_folder += '{date:%Y-%m-%d_%H_%M_%S}'.format(date=datetime.datetime.now())
+        os.makedirs(training_folder, exist_ok=True)
 
-        logger.info(f'Created folder for training at {training_folder}')
+        logger.info(f'Folder prepared for training at {training_folder}')
 
         peft_config = None
         if self.trainer_config.training_config.use_lora:
@@ -133,6 +138,7 @@ class MedHalTrainer:
                 'bias': self.trainer_config.training_config.bias,
                 'use_rslora': self.trainer_config.training_config.use_rslora,
                 'target_modules': ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+                'task_type': 'CAUSAL_LM'
             }
 
             if use_loftq:
@@ -149,7 +155,6 @@ class MedHalTrainer:
             data_collator=self.data_collator,
             peft_config=peft_config,
             # packing=False,
-            # dataset_num_proc=2,
             args=SFTConfig(
                 # GPU related arguments
                 per_device_train_batch_size=self.trainer_config.training_config.per_device_train_batch_size,
@@ -175,6 +180,7 @@ class MedHalTrainer:
                 # Other arguments
                 output_dir=training_folder,
                 max_seq_length=self.trainer_config.checkpoint_config.max_seq_len,
+                dataset_num_proc=12,
             )
         )
 
@@ -187,6 +193,7 @@ class MedHalTrainer:
 
         self.prepare()
         logger.info("Training")
+        log_trainable_parameters(self.model)
         
         stats = self.trainer.train()
 
@@ -199,3 +206,23 @@ class MedHalTrainer:
         self.tokenizer.save_pretrained(
             f'{self.trainer_config.training_config.output_dir}/lora_adapters'
         )
+
+def log_trainable_parameters(model) -> float:
+    """
+    Logs the percentage of trainable parameters in a Hugging Face model.
+
+    Args:
+        model: The Hugging Face PreTrainedModel instance (after LoRA or other
+               parameter-efficient fine-tuning).
+
+    """
+    total_params = 0
+    trainable_params = 0
+    for name, param in model.named_parameters():
+        total_params += param.numel()
+        if param.requires_grad:
+            trainable_params += param.numel()
+
+    logger.info(f"Total parameters in the model (after LoRA): {total_params:,}")
+    logger.info(f"Trainable parameters (LoRA): {trainable_params:,}")
+    logger.info(f"Percentage of trainable parameters: {(trainable_params / total_params) * 100:.2f}%")

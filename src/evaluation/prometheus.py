@@ -1,19 +1,16 @@
-import ast
-from math import floor
 import re
 import itertools
 from typing import List
-import matplotlib.pyplot as plt
-from src.data.dataset import Dataset
 import re
 
+import matplotlib.pyplot as plt
 import plotly.graph_objects as go
-import plotly.express as px
 
 from nltk.translate import bleu_score
 import pandas as pd
 from tqdm import tqdm
 
+from src.data.dataset import Dataset
 from src.data.dataset import Dataset, ComparisonExtractionDataset
 from src.generation.templates import BASE_PROMPT_TEMPLATE
 from src.ontology.snomed import Snomed

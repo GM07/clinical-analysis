@@ -52,28 +52,34 @@ class Formatter:
         self.tokenizer = tokenizer
         self.training = training
 
-    def __call__(self, x) -> List[str]:
-        if isinstance(x['context'], str):
+    def __call__(self, x) -> Dict[str, str] | Dict[str, List[str]]:
+        if isinstance(x['statement'], str):
             return {'text': self.format_sample(x['context'], x['statement'], x['label'], x['explanation'])}
 
-        return {'text': self.format_batched_dict(x)}
+        return {'text': self.format_batched(x)}
 
-    def format_batched_dict(self, samples: List[Dict[str, Any]]) -> List[str]:
+    def format_batched(self, samples: Dict[str, List[str]]) -> List[str]:
 
         output_texts = []
         for i in range(len(samples['statement'])):
             context = samples['context'][i]
             statement = samples['statement'][i]
             label = samples['label'][i]
-            explanation = samples['explanation'][i]
+            explanation = None
+
+            if self.training:
+                explanation = samples['explanation'][i] if samples['explanation'][i] else ''
+
             output_texts.append(self.format_sample(context, statement, label, explanation))
 
         return output_texts
 
 
-    def format_sample(self, context, statement, label, explanation) -> str:
-
+    def format_sample(self, context, statement, label, explanation = None) -> str:
         yes_no_label = 'YES' if label else 'NO'
+
+        if self.training and not label:
+            assert explanation is not None, f'When generating training samples, an explanation must be provided.\nStatement : {statement}\nLabel : {yes_no_label}'
         
         if self.training:
             med_hal_format_context = MEDHAL_FORMAT_TRAINING_CONTEXT

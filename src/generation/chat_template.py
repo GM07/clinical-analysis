@@ -58,6 +58,8 @@ class ChatTemplate:
         chats = [[
             {"role": "system", "content": system_prompt},
             {'role': 'user', 'content': entry}
+        ] if system_entry else [
+            {'role': 'user', 'content': entry}
         ] for entry in entries]
 
         return self.apply(chats)

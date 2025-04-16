@@ -9,9 +9,10 @@ import re
 
 from src.visualization.utils import plot_category_prediction_accuracy
 
-class HallucinationEvaluator:
+class HallucinationSamplesEvaluator:
     """
-    Evaluator that computes precision, recall, f1 scores on medhal dataset. It also computes the BLEU and ROUGE scores of the explanations
+    Evaluator that computes precision, recall, f1 scores on medhal dataset based on given generations. 
+    It also computes the BLEU and ROUGE scores of the explanations
     """
 
     VALID_PATTERN = r'Factual(?::)?(?:\n| |\*)*(YES|NO)'
@@ -77,7 +78,6 @@ class HallucinationEvaluator:
             'rouge2': np.mean(rouge_2),
             'bleu': np.mean(bleu),
             # 'bert': np.mean(bert_score).item(),
-            'valid': filtered,
             'invalid': invalid,
             'valid_explanation': valid_explanation,
         }
@@ -152,8 +152,8 @@ class HallucinationEvaluator:
         return bleu
 
     def _get_bert_scores(self, references, predictions):
-        score = BERTScorer(lang='en', device='mps')
-        bert_scores = score.score(predictions, references, verbose=True, batch_size=32)
+        scorer = BERTScorer(model_type='/home/gmehenni/projects/def-azouaq/gmehenni/models/ModernBERT-large', device='cuda')
+        bert_scores = scorer.score(predictions, references, verbose=True, batch_size=32)
         return bert_scores[2] # f1-measure
 
 
@@ -174,7 +174,7 @@ class HallucinationEvaluator:
         all_categories = set()
 
         for path, model_name in zip(paths, model_names):
-            evaluator = HallucinationEvaluator(path)
+            evaluator = HallucinationSamplesEvaluator(path)
             if 'ours' in path:
                 results = evaluator.evaluate(add_prompt=True, output_col='output')
             else:
@@ -183,7 +183,7 @@ class HallucinationEvaluator:
             df = results['valid'].to_pandas()
 
             def map_categories(category):
-                return HallucinationEvaluator.DATA_TO_TASK[category]
+                return HallucinationSamplesEvaluator.DATA_TO_TASK[category]
 
             df[category_column] = df[category_column].apply(map_categories)
             
