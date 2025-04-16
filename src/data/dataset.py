@@ -1,7 +1,7 @@
 import logging
 import os
 import random
-from typing import Any, List, Tuple
+from typing import Any, Callable, List, Tuple
 import joblib
 import ast
 
@@ -96,7 +96,13 @@ class Dataset:
                 break
 
     @staticmethod
-    def partitions_to_file(partition_folder_path: str, output_file_path: str, column_names: List[str] = ['normal', 'beam', 'constrained']):
+    def partitions_to_file(
+        partition_folder_path: str, 
+        output_file_path: str, 
+        original_dataset_path: str = None,
+        column_names: List[str] = ['normal', 'beam', 'constrained'], 
+        preprocess: Callable = None
+    ):
         """
         Will create a csv file by merging the results of all partitions in `partition_folder_path`
 
@@ -104,13 +110,17 @@ class Dataset:
             partition_folder_path: Path of the folder containing all partitions
             output_file_path: Path where the output dataset will be saved
             column_names: Name of the columns where the results will be stored
+            original_dataset_path: Path to the original dataset used to generate the partitions (csv). Useful if original file was moved
         """
         analyzer = DatasetPartitionAnalyzer(partition_folder_path=partition_folder_path)
 
         if len(analyzer.partitions) == 0:
             return pd.DataFrame([])
 
-        initial_dataset = pd.read_csv(analyzer.partitions[0].original_dataset_path)
+        if not original_dataset_path:
+            original_dataset_path = analyzer.partitions[0].original_dataset_path
+        initial_dataset = pd.read_csv(original_dataset_path)
+
         # nb_results = len(analyzer.partitions[0].results[0])
         # assert nb_results == len(column_names), 'The column names are not equal to the number of results per sample'
         if isinstance(analyzer.partitions[0].results[0], list) or isinstance(analyzer.partitions[0].results[0], tuple):
@@ -126,11 +136,15 @@ class Dataset:
             for i, result_val in partition.results.items():
                 if result_val is None:
                     continue
-                    
+
                 if isinstance(result_val, list) or isinstance(result_val, tuple):
                     for res, column_name in zip(result_val, column_names):
+                        if preprocess:
+                            res = preprocess(res)
                         initial_dataset[column_name].iloc[partition.start + i] = res
                 else:
+                    if preprocess:
+                        result_val = preprocess(result_val)
                     initial_dataset[column_names[0]].iloc[partition.start + i] = result_val
         
         initial_dataset = initial_dataset.loc[:, ~initial_dataset.columns.str.contains('^Unnamed')]
