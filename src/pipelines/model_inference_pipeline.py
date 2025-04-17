@@ -1,26 +1,67 @@
 from typing import List
+import logging
 
 import torch
 from tqdm import tqdm
 from vllm import LLM, SamplingParams
 
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from src.utils import batch_elements
+logger = logging.getLogger(__name__)
+
+from src.models.utils import load_model, load_tokenizer
+from src.utils import batch_elements, run_inference
+
+class HFModelInferencePipeline:
+    """
+    Helper class to load HuggingFace models and perform inference using transformers
+    """
+    def __init__(self, model_path: str, tokenizer_path: str = None):
+
+        if tokenizer_path is None:
+            tokenizer_path = model_path
+
+        self.model = load_model(model_path)
+        self.tokenizer = load_tokenizer(tokenizer_path)
+
+    def run_inference(self, inputs: List[str], max_new_tokens: int = 128, batch_size: int = 1):
+        """
+        Runs inference of a model on a set of inputs
+
+        Args:
+            inputs: Inputs to run inference on
+            batch_size: Number of inputs to run inference on at once
+            max_new_tokens: Number of tokens to generated
+        """
+
+        logger.info('Running inference')
+        batched_prompts = batch_elements(inputs, batch_size)
+        results = []
+        for batch in tqdm(batched_prompts, desc='Running inference', total=len(batched_prompts)):
+            encodeds = self.tokenizer(batch, return_tensors="pt", padding=True)
+            model_inputs = encodeds.to(self.model.device)
+            generated_ids = self.model.generate(model_inputs, max_new_tokens=max_new_tokens)
+            decoded = self.tokenizer.batch_decode(generated_ids)
+            results.extend(decoded)
+
+        return results
+
+    def apply_chat_template(self, inputs: List):
+        """
+        Applies the chat template to the inputs
+        """
+        return self.tokenizer.apply_chat_template(inputs, tokenize=False, add_generation_prompt=True)
 
 class ModelInferencePipeline:
-    """
-    Abstract class for inference pipelines
-    """
 
     def __init__(self, model_path: str, tokenizer_path: str = None):
         self.nb_gpus = torch.cuda.device_count()
+
         if tokenizer_path is None:
-            self.llm = LLM(model=model_path, tensor_parallel_size=self.nb_gpus)
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-        else:
-            self.llm = LLM(model=model_path, tokenizer=tokenizer_path, tensor_parallel_size=self.nb_gpus)
-            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+            tokenizer_path = model_path
+
+        self.llm = LLM(model=model_path, tokenizer=tokenizer_path, tensor_parallel_size=self.nb_gpus)
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 
     def run_inference(self, inputs: List, max_new_tokens: int = 128):
         """
@@ -75,80 +116,3 @@ class ClassifierModelInferencePipeline:
         Applies the chat template to the inputs
         """
         return self.tokenizer.apply_chat_template(inputs, tokenize=False, add_generation_prompt=True)
-
-
-# from typing import List
-
-# import torch
-# import logging
-# from tqdm import tqdm
-# from vllm import LLM, SamplingParams
-
-# from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-# from src.utils import batch_elements
-
-# logger = logging.getLogger(__name__)
-
-# class ModelInferencePipeline:
-#     """
-#     Abstract class for inference pipelines
-#     """
-
-#     def __init__(self, model_path: str, tokenizer_path: str = None):
-#         self.nb_gpus = torch.cuda.device_count()
-#         if tokenizer_path is None:
-#             self.llm = LLM(model=model_path, tensor_parallel_size=self.nb_gpus)
-#             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-#         else:
-#             self.llm = LLM(model=model_path, tokenizer=tokenizer_path, tensor_parallel_size=self.nb_gpus)
-#             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
-
-#     def run_inference(self, inputs: List, max_new_tokens: int = 128):
-#         """
-#         Runs inference on the inputs using vllm
-
-#         Args:
-#             inputs: List of inputs to run inference on
-#             max_new_tokens: Maximum number of new tokens to generate
-#         """
-#         params = SamplingParams(max_tokens=max_new_tokens)
-
-#         outputs = self.llm.generate(inputs, sampling_params=params)
-
-#         return [output.outputs[0].text for output in outputs]
-
-#     def apply_chat_template(self, inputs: List):
-#         """
-#         Applies the chat template to the inputs
-#         """
-#         return self.tokenizer.apply_chat_template(inputs, tokenize=False, add_generation_prompt=True)
-
-# class ClassifierModelInferencePipeline:
-
-#     def __init__(self, model_path: str, tokenizer_path: str = None):
-#         if tokenizer_path is None:
-#             self.model = LLM(model=model_path, tokenizer=model_path, task='classify')
-#         else:
-#             self.model = LLM(model=model_path, tokenizer=tokenizer_path, task='classify')
-
-#     def run_inference(self, inputs: List, apply_chat_template: bool = True):
-#         """
-#         Runs inference on the inputs using vllm
-
-#         Args:
-#             inputs: List of inputs to run inference on
-#         """
-#         if apply_chat_template:
-#             logger.info('Applying chat template')
-#             inputs = self.apply_chat_template(inputs)
-
-#         outputs = self.model.classify(inputs)
-
-#         return [output.outputs.probs for output in outputs]
-
-#     def apply_chat_template(self, inputs: List):
-#         """
-#         Applies the chat template to the inputs
-#         """
-#         return self.tokenizer.apply_chat_template(inputs, tokenize=False, add_generation_prompt=True)

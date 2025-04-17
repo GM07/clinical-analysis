@@ -9,7 +9,7 @@ from datasets import Dataset as HuggingFaceDataset
 import logging
 
 from src.data.dataset import DatasetPartition
-from src.pipelines.model_inference_pipeline import ModelInferencePipeline
+from src.pipelines.model_inference_pipeline import HFModelInferencePipeline, ModelInferencePipeline
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,8 @@ class DatasetInferencePipeline:
         apply_chat_template: bool = True, 
         rows_to_chat: Callable = None,
         saving_path: str = None,
-        system_prompt: str = None
+        system_prompt: str = None,
+        batch_size: int = None,
     ):
         """
         Executes an inference pipeline on a dataset
@@ -42,6 +43,7 @@ class DatasetInferencePipeline:
             rows_to_chat: Function to convert rows to a chat. The function should take multiple rows and return a list of messages that can be sent to the LLM.
             On message is expected per row. This is useful if the chat template needs to be created from multiple columns (few-shot, etc).
             saving_path: Path to save the results to. If None, the results are not saved.
+            batch_size: Batch size to use
         """
         # Initialize results list with None values
         results = [None] * len(dataset)
@@ -58,9 +60,20 @@ class DatasetInferencePipeline:
                 else:
                     start_idx = i
                     break
+        logger.info(f"Resuming from index {start_idx}")
         
+        # Calculate the end index based on max_rows_to_process
+        if max_rows_to_process is None:
+            # Process all remaining rows
+            end_idx = len(dataset)
+            logger.info(f"Processing rows from index {start_idx} to end (all remaining).")
+        else:
+            # Process up to max_rows_to_process rows
+            end_idx = min(start_idx + max_rows_to_process, len(dataset))
+            logger.info(f"Processing up to {max_rows_to_process} rows, from index {start_idx} to {end_idx}.")
 
-        print(f"Resuming from index {start_idx}")
+        dataset = dataset.select(range(start_idx, end_idx))
+        logger.info(f'Currently processing {len(dataset)} rows')
 
         inputs = self.get_chats(
             dataset, 
@@ -71,25 +84,19 @@ class DatasetInferencePipeline:
             system_prompt=system_prompt
         )
 
+        logger.info(f"Generated chats")
+
         # Only process inputs starting from start_idx
         if start_idx < len(inputs):
 
-            # Calculate the end index based on max_rows_to_process
-            if max_rows_to_process is None:
-                # Process all remaining rows
-                end_idx = len(dataset)
-                logger.info(f"Processing rows from index {start_idx} to end (all remaining).")
-            else:
-                # Process up to max_rows_to_process rows
-                end_idx = min(start_idx + max_rows_to_process, len(dataset))
-                logger.info(f"Processing up to {max_rows_to_process} rows, from index {start_idx} to {end_idx}.")
+            args = {
+                'inputs': inputs,
+                'max_new_tokens': max_new_tokens
+            }
+            if batch_size:
+                args['batch_size'] = batch_size
 
-            inputs_to_process = inputs[start_idx:end_idx]
-
-            output = self.run_inference(
-                inputs_to_process, 
-                max_new_tokens=max_new_tokens, 
-            )
+            output = self.run_inference(**args)
             
             output_idx = 0
             for i in range(start_idx, end_idx):
@@ -130,21 +137,25 @@ class DatasetInferencePipeline:
         if rows_to_chat is not None:
             # A function was given that converts rows to a chat. Apply it to the dataset and the output of this 
             # function is added to the dataset as a new column called f'{input_column}_tmp'
+            logger.info('Applying custom function to generate chat')
+
             def apply_function(rows):
                 chats = rows_to_chat(rows)
                 return {tmp_column: chats}
             dataset = dataset.map(apply_function, batched=True)
         else:
             if apply_chat_template:
+                logger.info('Applying chat template')
                 # The input column is a prompt. Convert it to a chat template
                 dataset = dataset.add_column(tmp_column, self.apply_chat_template_dataset(dataset, input_column, tmp_column, system_prompt))
             else:
                 # The input column already contains the chat template
+                logger.info('Input column already contains conversation')
                 tmp_column = input_column
 
         return dataset[tmp_column]
 
-    def apply_chat_template_dataset(self, dataset: HuggingFaceDataset, column: list[str] = None, output_column: str = 'tmp', system_prompt: str = None):
+    def apply_chat_template_dataset(self, dataset: HuggingFaceDataset, column: str = None, output_column: str = 'tmp', system_prompt: str = None):
         """
         Applies the chat template to a column of the dataset. New column is added to the dataset.
 
@@ -152,19 +163,22 @@ class DatasetInferencePipeline:
             dataset: Dataset to apply the chat template to
             column: Column to apply the chat template to
             output_column: Column to store the output of the chat template
+            system_prompt: System prompt to use (won't set a system prompt if None)
 
         Returns:
-            Newly added column with the chat template applied
+        Newly added column with the chat template applied
         """
-        def apply_chat_template_for_row(data):
+        def apply_chat_template_row(data):
             inputs = data[column]
 
-            if isinstance(inputs[0], str):
+            if isinstance(inputs, str):
                 inputs = [[{'role': 'user', 'content': x}] if system_prompt is None \
                           else [{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': x}] for x in inputs]
 
             return {output_column: self.apply_chat_template(inputs)}
-        dataset = dataset.map(apply_chat_template_for_row, batched=True, desc='Applying chat template')
+        
+        print('Processing...')
+        dataset = dataset.map(apply_chat_template_row, desc='Applying chat template')
         return dataset[output_column]
     
     @abstractmethod
@@ -183,16 +197,24 @@ class ModelDatasetInferencePipeline(DatasetInferencePipeline, ModelInferencePipe
     def apply_chat_template(self, inputs):
         return ModelInferencePipeline.apply_chat_template(self, inputs)
 
+class HFModelDatasetInferencePipeline(DatasetInferencePipeline, HFModelInferencePipeline):
+    """
+    Pipeline class for LLM inference using Huggingface on a dataset's partition
+    """
+
+    def __init__(self, model_path: str, tokenizer_path: str = None):
+        HFModelInferencePipeline.__init__(self, model_path, tokenizer_path)
+
+    def apply_chat_template(self, inputs):
+        return HFModelInferencePipeline.apply_chat_template(self, inputs)
+
+
 class ModelPartitionedInferencePipeline(ModelInferencePipeline):
     """
     General pipeline class for LLM inference using vLLM on a dataset's partition
     """
 
-    def __init__(
-        self, 
-        model_path: str, 
-        input_column: str = 'input', 
-    ):
+    def __init__(self, model_path: str, input_column: str = 'input', ):
         super().__init__(model_path)
         self.input_column = input_column
 
@@ -381,9 +403,7 @@ class ProviderDatasetInferencePipeline(DatasetInferencePipeline):
                         # Wait before retry with exponential backoff
                         time.sleep(0.5 * (2 ** retries))
                     else:
-                        # If all retries failed, log error and continue with next batch
                         logging.error(f"Failed to process batch after {MAX_RETRIES+1} attempts")
-                        # Add None values for this batch
                         results.extend([None] * (batch_end - batch_idx))
                 
                 # Add a small delay between batches to avoid overwhelming the endpoint
