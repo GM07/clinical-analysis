@@ -199,6 +199,7 @@ def main():
         data_args,
         splits=data_args.dataset_splits,
     )
+
     logger.info(
         f"Training on the following datasets and their proportions: {[split + ' : ' + str(dset.num_rows) for split, dset in raw_datasets.items()]}"
     )
@@ -260,7 +261,21 @@ def main():
         device_map=get_kbit_device_map() if quantization_config is not None else None,
         quantization_config=quantization_config,
     )
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_args.model_name_or_path,
+        **model_kwargs
+    )
     logger.info("*** Model loaded! ***")
+
+    if tokenizer.pad_token_id is None:
+        logger.warning("No pad token found, setting it to <finetune-pad-token>")
+        tokenizer.add_special_tokens({'pad_token': '<finetune-pad-token>'})
+        # TODO : What happens if the tokenizer is in a different folder, thus has the pad token id, but the model does not have the same length
+        model.resize_token_embeddings(len(tokenizer)) 
+        logger.warning(f"Pad token added")
+    else:
+        logger.info(f'Pad token is {tokenizer.pad_token}')
 
     assert (
         tokenizer.pad_token_id != tokenizer.eos_token_id
@@ -272,14 +287,9 @@ def main():
         response_template_context, add_special_tokens=False
     )
 
-    # for i in range(len(train_dataset)):
     example = train_dataset[0]["text"]
     example_ids = tokenizer.encode(example, add_special_tokens=False)
-
-    response_template_ids = tokenizer.encode(
-        response_template_context, add_special_tokens=False
-    )
-
+    response_template_ids = tokenizer.encode(response_template_context, add_special_tokens=False)
     assert response_template_context in example
     assert response_template_ids[0] in example_ids
     assert response_template_ids[-1] in example_ids
@@ -290,10 +300,6 @@ def main():
         mlm=False,
     )
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_args.model_name_or_path,
-        **model_kwargs
-    )
 
     ########################
     # Initialize the Trainer

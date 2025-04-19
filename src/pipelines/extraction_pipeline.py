@@ -20,7 +20,9 @@ class ExtractionPipelineConfig:
 
     nb_concepts: int = 5 # Number of total concepts to process
     save_frequency: int = 1 # Number of results saved between partition saves
-
+    return_internal_dataset: bool = True
+    save_internal_dataset: bool = False
+    internal_dataset_saving_path: str = None
 
 @dataclass
 class ComparisonExtractionPipelineConfig(ExtractionPipelineConfig):
@@ -64,7 +66,7 @@ class ExtractionPipeline(Pipeline):
             medcat_path: Path to medcat annotator model
             medcat_device: Device used by the medcat annotator
             loading_config: Loading configuration used to load the model
-            system_prompt: System prompt used to generate the prompts
+            system_prompt: System prompt used to generate the prompts,
         """
         super().__init__()
 
@@ -120,8 +122,17 @@ class ExtractionPipeline(Pipeline):
         results = prompter(
             clinical_notes=clinical_notes,
             top_n=extraction_config.nb_concepts,
-            generation_config=generation_config
+            generation_config=generation_config,
+            return_dataset=extraction_config.return_internal_dataset or extraction_config.save_internal_dataset
         )
+
+        if extraction_config.save_internal_dataset:
+            answers, dataset = results
+            small_dataset = dataset.remove_columns(['clinical_note']) # clinical notes can be large so we don't save these
+            small_dataset.to_csv(extraction_config.internal_dataset_saving_path)
+
+        if extraction_config.return_internal_dataset:
+            return answers, dataset
 
         return results
 
@@ -158,8 +169,16 @@ class DatasetExtractionPipeline(ExtractionPipeline):
             clinical_notes=dataset['TEXT'],
             top_n=extraction_config.top_n,
             generation_config=generation_config,
-            return_dataset=False
+            return_dataset=extraction_config.return_internal_dataset or extraction_config.save_internal_dataset
         )
+
+        if extraction_config.save_internal_dataset:
+            answers, dataset = results
+            small_dataset = dataset.remove_columns(['clinical_note']) # clinical notes can be large so we don't save these
+            small_dataset.to_csv(extraction_config.internal_dataset_saving_path)
+
+        if extraction_config.return_internal_dataset:
+            return answers, dataset
 
         dataset = dataset.add_column('OUTPUT', results)
         return dataset
@@ -172,28 +191,6 @@ class PartitionedExtractionPipeline(ExtractionPipeline):
     ontology-based beam search. The difference with the `PartitionedComparisonExtractionPipeline` is that the `PartitionedExtractionPipeline`
     will only extract the concepts using a specific decoding method.
     """
-
-    def __init__(
-        self, 
-        checkpoint_path: str,
-        snomed_path: str,
-        snomed_cache_path: str,
-        medcat_path: str,
-        medcat_device: str = 'cuda',
-        loading_config: LoadingConfig = LoadingConfig(),
-        tokenizer_path: str = None,
-        system_prompt: str = None,
-        apply_chat_template: bool = True,
-    ):
-        """
-        Args:
-            checkpoint_path: Path to the model (if path does not exist locally, the model will be fetched)
-            snomed_path: Path to snomed owl file
-            snomed_cache_path: Path to snomed cache file
-            medcat_path: Path to medcat annotator model
-            medcat_device: Device used by the medcat annotator
-        """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt, apply_chat_template)
 
     def __call__(
         self, 
@@ -239,29 +236,6 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
     a generation made using diverse beam search and one made using ontology-based beam search. 
     """
 
-    def __init__(
-        self, 
-        checkpoint_path: str,
-        snomed_path: str,
-        snomed_cache_path: str,
-        medcat_path: str,
-        medcat_device: str = 'cuda',
-        loading_config: LoadingConfig = LoadingConfig(),
-        tokenizer_path: str = None,
-        system_prompt: str = None,
-        apply_chat_template: bool = True
-    ):
-        """
-        Args:
-            checkpoint_path: Path to the model (if path does not exist locally, the model will be fetched)
-            snomed_path: Path to snomed owl file
-            snomed_cache_path: Path to snomed cache file
-            medcat_path: Path to medcat annotator model
-            medcat_device: Device used by the medcat annotator
-            loading_config: Loading configuration used to load the model
-        """
-        super().__init__(checkpoint_path, snomed_path, snomed_cache_path, medcat_path, medcat_device, loading_config, tokenizer_path, system_prompt, apply_chat_template)
-
     def __call__(self, clinical_notes: List[str], extraction_config: ComparisonExtractionPipelineConfig = ComparisonExtractionPipelineConfig()):
         """
         Executes the pipeline on the dataset
@@ -281,6 +255,7 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
         return self.get_results(clinical_notes, prompter, extraction_config)
 
     def get_results(self, clinical_notes: List[str], prompter: GuidedOntologyPrompter, extraction_config: ComparisonExtractionPipelineConfig = ComparisonExtractionPipelineConfig()):
+        # TODO : Support for saving internal dataset
         normal_config = GenerationConfig.greedy_search(batch_size=extraction_config.batch_size)
         beam_config = GenerationConfig.beam_search(batch_size=extraction_config.batch_size)
         constrained_config = GenerationConfig.ontology_beam_search(batch_size=extraction_config.batch_size)
@@ -300,11 +275,12 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
         constrained_attr_by_id = prompter(
             clinical_notes=clinical_notes,
             top_n=extraction_config.nb_concepts,
-            generation_config=constrained_config
+            generation_config=constrained_config,
         )
 
         results = (normal_attr_by_id, beam_attr_by_id, constrained_attr_by_id)
         return results
+
 
 class DatasetComparisonExtractionPipeline(ComparisonExtractionPipeline):
     """

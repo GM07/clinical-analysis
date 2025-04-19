@@ -1,5 +1,5 @@
 absl_py==2.1.0+computecanada
-accelerate==1.1.1+computecanada
+accelerate==1.5.2+computecanada
 aiofiles==24.1.0+computecanada
 aiohappyeyeballs==2.4.4+computecanada
 aiohttp==3.10.9+computecanada
@@ -57,7 +57,7 @@ fqdn==1.5.1+computecanada
 frozenlist==1.5.0+computecanada
 fsspec==2024.9.0+computecanada
 gensim==4.3.3+computecanada
-gguf==0.10.0+computecanada
+gguf==0.14.0+computecanada
 h11==0.14.0+computecanada
 hf_transfer==0.1.3+computecanada
 hjson==3.1.0+computecanada
@@ -65,11 +65,11 @@ hjson==3.1.0+computecanada
 httpcore==1.0.7+computecanada
 httptools==0.6.1+computecanada
 httpx==0.28.1+computecanada
-huggingface_hub==0.26.5+computecanada
+huggingface_hub==0.30.2+computecanada
 humanfriendly==10.0+computecanada
 idna==3.10+computecanada
 imageio==2.36.1+computecanada
-importlib_metadata==8.5.0+computecanada
+importlib_metadata==8.0.0+computecanada
 interegular==0.3.3+computecanada
 ipykernel==6.29.4+computecanada
 ipython==8.25.0+computecanada
@@ -100,8 +100,8 @@ language_data==1.3.0+computecanada
 lark==1.2.2+computecanada
 lazy_loader==0.4+computecanada
 linkify_it_py==2.0.3+computecanada
-llvmlite==0.43.0+computecanada
-lm_format_enforcer==0.10.6+computecanada
+llvmlite==0.44.0+computecanada
+lm_format_enforcer==0.10.11+computecanada
 locket==1.0.0+computecanada
 marisa_trie==1.2.1+computecanada
 Markdown==3.7+computecanada
@@ -112,7 +112,7 @@ matplotlib_inline==0.1.7+computecanada
 mdit_py_plugins==0.4.2+computecanada
 mdurl==0.1.2+computecanada
 # medcat==1.15.0b0 # Needs internet connection
-mistral_common==1.4.4+computecanada
+mistral_common==1.5.4+computecanada
 mistune==3.0.2+computecanada
 mpmath==1.3.0+computecanada
 msgpack==1.1.0+computecanada
@@ -130,12 +130,12 @@ ninja==1.11.1+computecanada
 nltk==3.9.1+computecanada
 nose==1.3.7+computecanada
 notebook_shim==0.2.4+computecanada
-numba==0.60.0+computecanada
+numba==0.61.2+computecanada
 numpy==1.26.4+computecanada
 nvidia_ml_py==12.560.30+computecanada
-openai==1.51.2+computecanada
+openai==1.74.0+computecanada
 # outcome==1.3.0.post0 # Needs internet connection
-outlines==0.0.46+computecanada
+outlines==0.1.11+computecanada
 overrides==7.7.0+computecanada
 # owlready2==0.47 # Needs internet connection
 packaging==24.1+computecanada
@@ -157,7 +157,7 @@ prometheus_client==0.21.1+computecanada
 prometheus_fastapi_instrumentator==7.0.0+computecanada
 prompt_toolkit==3.0.47+computecanada
 propcache==0.2.1+computecanada
-protobuf==5.29.1+computecanada
+protobuf==3.20.3+computecanada
 # psutil==5.9.8 # Needs internet connection
 ptyprocess==0.7.0+computecanada
 pure_eval==0.2.2+computecanada
@@ -180,7 +180,7 @@ pytz==2024.1+computecanada
 # pyviz_comms==3.0.3 # Needs internet connection
 PyYAML==6.0.2+computecanada
 pyzmq==26.0.3+computecanada
-ray==2.37.0+computecanada
+ray==2.43.0+computecanada
 referencing==0.35.1+computecanada
 regex==2024.9.11+computecanada
 requests==2.32.3+computecanada
@@ -220,16 +220,17 @@ tiktoken==0.7.0+computecanada
 tinycss2==1.4.0+computecanada
 tokenizers==0.21.0+computecanada
 toolz==1.0.0+computecanada
-torch==2.4.1+computecanada
-torchvision==0.19.1+computecanada
+torch==2.6.0+computecanada
+torchaudio==2.6.0+computecanada
+torchvision==0.21.0+computecanada
 tornado==6.3.3+computecanada
 tqdm==4.67.1+computecanada
 traitlets==5.14.3+computecanada
-transformers==4.47.0+computecanada
+transformers==4.51.3+computecanada
 # trio==0.28.0 # Needs internet connection
 # trio-websocket==0.11.1 # Needs internet connection
 triton==3.1.0+computecanada
-trl==0.12.1+computecanada
+trl==0.15.2+computecanada
 # tuna==0.5.11 # Needs internet connection
 typer==0.13.1+computecanada
 types_python_dateutil==2.9.0.20241206+computecanada
@@ -243,7 +244,7 @@ uri_template==1.3.0+computecanada
 urllib3==2.2.3+computecanada
 uvicorn==0.31.1+computecanada
 uvloop==0.20.0+computecanada
-vllm==0.6.2+computecanada
+vllm==0.8.4+computecanada
 wasabi==1.1.3+computecanada
 watchfiles==0.18.0+computecanada
 wcwidth==0.2.13+computecanada
@@ -256,7 +257,7 @@ widgetsnbextension==4.0.13+computecanada
 wrapt==1.17.0+computecanada
 wsproto==1.2.0+computecanada
 xarray==2024.11.0+computecanada
-xformers==0.0.27.post2+computecanada
+xformers==0.0.29.post2+computecanada
 xxhash==3.5.0+computecanada
 xyzservices==2024.9.0+computecanada
 yarl==1.18.0+computecanada

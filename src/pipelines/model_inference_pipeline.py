@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 from src.models.utils import load_model, load_tokenizer
 from src.utils import batch_elements, run_inference
 
+def apply_chat_template(tokenizer, inputs):
+    """
+    Applies the chat template to the inputs
+    """
+    return tokenizer.apply_chat_template(inputs, tokenize=False, add_generation_prompt=True)
+
 class HFModelInferencePipeline:
     """
     Helper class to load HuggingFace models and perform inference using transformers
@@ -34,28 +40,25 @@ class HFModelInferencePipeline:
             max_new_tokens: Number of tokens to generated
         """
 
-        logger.info('Running inference')
         batched_prompts = batch_elements(inputs, batch_size)
         results = []
         for batch in tqdm(batched_prompts, desc='Running inference', total=len(batched_prompts)):
-            encodeds = self.tokenizer(batch, return_tensors="pt", padding=True)
+            encodeds = self.tokenizer.apply_chat_template(batch, return_tensors="pt", padding=True)
             model_inputs = encodeds.to(self.model.device)
-            generated_ids = self.model.generate(model_inputs, max_new_tokens=max_new_tokens)
+            generated_ids = self.model.generate(**model_inputs, max_new_tokens=max_new_tokens)
             decoded = self.tokenizer.batch_decode(generated_ids)
             results.extend(decoded)
 
         return results
 
     def apply_chat_template(self, inputs: List):
-        """
-        Applies the chat template to the inputs
-        """
-        return self.tokenizer.apply_chat_template(inputs, tokenize=False, add_generation_prompt=True)
+        return apply_chat_template(self.tokenizer, inputs)
 
 class ModelInferencePipeline:
 
     def __init__(self, model_path: str, tokenizer_path: str = None):
         self.nb_gpus = torch.cuda.device_count()
+        logger.info(f'Using {self.nb_gpus} GPUs')
 
         if tokenizer_path is None:
             tokenizer_path = model_path
@@ -78,10 +81,7 @@ class ModelInferencePipeline:
         return [output.outputs[0].text for output in outputs]
 
     def apply_chat_template(self, inputs: List):
-        """
-        Applies the chat template to the inputs
-        """
-        return self.tokenizer.apply_chat_template(inputs, tokenize=False, add_generation_prompt=True)
+        return apply_chat_template(self.tokenizer, inputs)
 
 class ClassifierModelInferencePipeline:
 
@@ -112,7 +112,4 @@ class ClassifierModelInferencePipeline:
         return predictions
 
     def apply_chat_template(self, inputs: List):
-        """
-        Applies the chat template to the inputs
-        """
-        return self.tokenizer.apply_chat_template(inputs, tokenize=False, add_generation_prompt=True)
+        return apply_chat_template(self.tokenizer, inputs)

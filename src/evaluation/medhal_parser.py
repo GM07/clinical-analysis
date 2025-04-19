@@ -3,7 +3,7 @@ from datasets import Dataset
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from rouge_score.rouge_scorer import RougeScorer
 from nltk.translate.bleu_score import sentence_bleu
-from bert_score import BERTScorer
+# from bert_score import BERTScorer
 import matplotlib.pyplot as plt
 import re
 
@@ -155,10 +155,10 @@ class MedHalParser:
 
         return bleu
 
-    def _get_bert_scores(self, references, predictions):
-        scorer = BERTScorer(model_type='/home/gmehenni/projects/def-azouaq/gmehenni/models/ModernBERT-large', device='cuda')
-        bert_scores = scorer.score(predictions, references, verbose=True, batch_size=32)
-        return bert_scores[2] # f1-measure
+    # def _get_bert_scores(self, references, predictions):
+        # scorer = BERTScorer(model_type='/home/gmehenni/projects/def-azouaq/gmehenni/models/ModernBERT-large', device='cuda')
+        # bert_scores = scorer.score(predictions, references, verbose=True, batch_size=32)
+        # return bert_scores[2] # f1-measure
 
 
     @staticmethod

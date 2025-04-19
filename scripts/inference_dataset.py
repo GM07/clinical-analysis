@@ -4,6 +4,8 @@ import logging
 from datasets import Dataset as HuggingFaceDataset
 from datasets import load_from_disk
 
+from src.models.openbiollm import OpenBioLLM
+from src.models.prometheus import Prometheus
 from src.pipelines.dataset_inference_pipeline import HFModelDatasetInferencePipeline, ModelDatasetInferencePipeline
 from src.data.utils import rows_to_chat
 
@@ -26,12 +28,29 @@ parser.add_argument('--output_column', type=str, default='OUTPUT', help='Column 
 parser.add_argument('--apply_chat_template', type=bool, default=True, help='Whether to apply the chat template or not')
 parser.add_argument('--hf', type=bool, default=False, required=False, help='Whether to use HuggingFace for inference (if False, will use vLLM)')
 parser.add_argument('--batch_size', type=int, default=32, required=False, help='Batch size to use (if using Huggingface for inference)')
+parser.add_argument('--system_prompt', type=str, default='none', required=False, help='System prompt to use (none, prometheus, bio, custom). If custom, use the format custom:<the prompt you want')
+
+SYSTEM_PROMPTS = {
+    'none': None,
+    'prometheus': Prometheus.SYSTEM_PROMPT,
+    'bio': OpenBioLLM.SYSTEM_PROMPT,
+}
+
+def get_system_prompt(prompt_type: str):
+
+    if prompt_type.startswith('custom:'):
+        return prompt_type.replace('custom:', '')
+
+    return SYSTEM_PROMPTS[prompt_type]
+    
 
 def main():
 
     args = parser.parse_args()
 
     print('Called with arguments : ', args)
+
+    system_prompt = get_system_prompt(args.system_prompt)
 
     pipeline_args = {}
     if args.hf:
@@ -61,7 +80,7 @@ def main():
         max_rows_to_process=args.max_rows_to_process,
         rows_to_chat=rows_to_chat if args.rows_to_chat else None,
         apply_chat_template=args.apply_chat_template,
-        # system_prompt="You are an expert and experienced from the healthcare and biomedical domain with extensive medical knowledge and practical experience. Your name is OpenBioLLM, and you were developed by Saama AI Labs. who's willing to help answer the user's query with explanation. In your explanation, leverage your deep medical expertise such as relevant anatomical structures, physiological processes, diagnostic criteria, treatment guidelines, or other pertinent medical concepts. Use precise medical terminology while still aiming to make the explanation clear and accessible to a general audience."
+        system_prompt=system_prompt,
         **pipeline_args
     )
 

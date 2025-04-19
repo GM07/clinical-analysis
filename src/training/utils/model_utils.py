@@ -26,6 +26,10 @@ from transformers.trainer_utils import get_last_checkpoint
 from .configs import DataArguments, DPOConfig, ModelArguments
 from trl import SFTConfig
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def get_current_device() -> int:
     """Get the current device. For GPU we return the local process index to enable multiple GPU training."""
@@ -63,9 +67,13 @@ def get_tokenizer(
     model_args: ModelArguments, data_args: DataArguments
 ) -> PreTrainedTokenizer:
     """Get the tokenizer for the model."""
+    tokenizer_path = model_args.tokenizer_name_or_path
+    if tokenizer_path is None:
+        logging.info(f'Tokenized not provided, using the one from model path located at {model_args.model_name_or_path}')
+        tokenizer_path = model_args.model_name_or_path
+
     tokenizer = AutoTokenizer.from_pretrained(
-        model_args.model_name_or_path,
-        revision=model_args.model_revision,
+        tokenizer_path,
         add_eos_token=True,
     )
 

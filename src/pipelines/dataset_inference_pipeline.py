@@ -9,7 +9,7 @@ from datasets import Dataset as HuggingFaceDataset
 import logging
 
 from src.data.dataset import DatasetPartition
-from src.pipelines.model_inference_pipeline import HFModelInferencePipeline, ModelInferencePipeline
+from src.pipelines.model_inference_pipeline import HFModelInferencePipeline, ModelInferencePipeline, apply_chat_template
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,6 @@ class DatasetInferencePipeline:
             dataset = dataset.map(apply_function, batched=True)
         else:
             if apply_chat_template:
-                logger.info('Applying chat template')
                 # The input column is a prompt. Convert it to a chat template
                 dataset = dataset.add_column(tmp_column, self.apply_chat_template_dataset(dataset, input_column, tmp_column, system_prompt))
             else:
@@ -168,17 +167,25 @@ class DatasetInferencePipeline:
         Returns:
         Newly added column with the chat template applied
         """
-        def apply_chat_template_row(data):
+        def create_chat_template_row(data):
             inputs = data[column]
 
             if isinstance(inputs, str):
                 inputs = [[{'role': 'user', 'content': x}] if system_prompt is None \
                           else [{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': x}] for x in inputs]
 
-            return {output_column: self.apply_chat_template(inputs)}
+            return {output_column: inputs}
         
-        print('Processing...')
-        dataset = dataset.map(apply_chat_template_row, desc='Applying chat template')
+        dataset = dataset.map(create_chat_template_row, desc='Creating chat template')
+
+        # templated = []
+        # for batch in tqdm(dataset.iter(batch_size=32), total=len(dataset) // 32, desc='Applying chat template'):
+            # for x in batch[output_column]:
+                # templated.append(self.apply_chat_template(x))
+        
+        # dataset = dataset.remove_columns(output_column)
+        # dataset = dataset.add_column(output_column, templated)
+        dataset = dataset.map(lambda x: {output_column: self.apply_chat_template(x[output_column])}, desc='Applying chat template', num_proc=1)
         return dataset[output_column]
     
     @abstractmethod

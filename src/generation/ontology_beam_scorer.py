@@ -87,6 +87,18 @@ class GenerationConfig:
         instance.batch_size = batch_size
         return instance
 
+    def with_hierarchy_score(self, hierarchy_score: float):
+        self.score_boost_factors[0] = hierarchy_score
+        return self
+
+    def with_property_score(self, property_score: float):
+        self.score_boost_factors[1] = property_score
+        return self
+
+    def with_similarity_score(self, similarity_score: float):
+        self.score_boost_factors[2] = similarity_score
+        return self
+
 class OntologyBeamScorerConfig:
     """
     Configuration class for the ontology beam scorer
@@ -279,12 +291,14 @@ class OntologyBeamScorer(BeamSearchScorer):
             avg_hierarchy_score = 0
             avg_property_score = 0
             for snomed_id in annotations:
-                avg_hierarchy_score += self.get_hierarchy_beam_boost(base_class_id, snomed_id)
-                avg_property_score += self.get_properties_beam_boost(base_class_id, snomed_id, decoded_context)
+                if self.config.generation_config.score_boost_factors[0] > 0:
+                    avg_hierarchy_score += self.get_hierarchy_beam_boost(base_class_id, snomed_id)
+                if self.config.generation_config.score_boost_factors[1] > 0:
+                    avg_property_score += self.get_properties_beam_boost(base_class_id, snomed_id, decoded_context)
 
             avg_hierarchy_score /= max(1, len(annotations))
             avg_property_score /= max(1, len(annotations))
-            groundedness_score = self.get_groundedness_beam_boost(i, decoded_context)
+            groundedness_score = self.get_groundedness_beam_boost(i, decoded_context) if self.config.generation_config.score_boost_factors[2] > 0 else 0
 
             freq_adapted_score = \
                   self.config.generation_config.score_boost_factors[0] * avg_hierarchy_score \
