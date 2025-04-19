@@ -132,6 +132,14 @@ class ModelArguments:
             )
         },
     )
+    tokenizer_name_or_path: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "The tokenizer checkpoint."
+            )
+        },
+    ),
     model_revision: str = field(
         default="main",
         metadata={

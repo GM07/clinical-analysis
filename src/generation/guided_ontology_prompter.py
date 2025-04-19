@@ -18,7 +18,7 @@ class GuidedOntologyPrompter(OntologyPrompter):
     be guided through an ontology-constrained decoding process.
     """
 
-    def __call__(self, clinical_notes: List[str], top_n: int = 5, generation_config: GenerationConfig = GenerationConfig(), return_dataset: bool = False):
+    def __call__(self, clinical_notes: List[str], top_n: int = 5, generation_config: GenerationConfig = GenerationConfig(), return_dataset: bool = False, dataset_cache: Dataset = None):
         """
         Starts the extraction on a dataset
 
@@ -27,12 +27,16 @@ class GuidedOntologyPrompter(OntologyPrompter):
             top_n: Number of concepts to keep per note
             generation_config: Generation config to be used by the model
             return_dataset: Whether to return the internal dataset used for generation
+            dataset_cache: If multiple calls are needed for this function, this argument can be used to prevent regenerating the internal dataset everytime
 
         Returns:
         List of prompts per clinical notes
         """        
-        logger.info(f'Generating prompts')
-        dataset: Dataset = self.generate_dataset(clinical_notes=clinical_notes, top_n=top_n)
+        if dataset_cache is not None:
+            logger.info(f'Using dataset cache of {len(dataset_cache)} rows')
+            dataset = dataset_cache
+        else:
+            dataset: Dataset = self.generate_dataset(clinical_notes=clinical_notes, top_n=top_n)
 
         return self.process_dataset(dataset, generation_config, return_dataset)
 
@@ -48,8 +52,8 @@ class GuidedOntologyPrompter(OntologyPrompter):
 
         id = 0
         note_id = 0
-        for clinical_note in tqdm(clinical_notes, total=len(clinical_notes), desc='Preparing dataset for processing'):
-
+        for clinical_note in tqdm(clinical_notes, total=len(clinical_notes), desc='Generating prompts'):
+            
             most_frequent_concepts, _ = DomainClassFrequency.get_most_frequent_concepts(
                 text=clinical_note, 
                 snomed=self.snomed, 

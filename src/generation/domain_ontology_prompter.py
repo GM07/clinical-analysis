@@ -76,7 +76,6 @@ class DomainOntologyPrompter(OntologyPrompter):
         Returns:
         List of prompts per clinical notes
         """
-        logger.info(f'Generating prompts')
         dataset: Dataset = self.generate_dataset(clinical_notes=clinical_notes, domain_concept_ids=domain_concept_ids)
 
         return self.process_dataset(dataset, generation_config, return_dataset)
@@ -94,7 +93,7 @@ class DomainOntologyPrompter(OntologyPrompter):
 
         id = 0
         note_id = 0
-        for clinical_note in tqdm(clinical_notes, total=len(clinical_notes), desc='Preparing dataset for processing'):
+        for clinical_note in clinical_notes:
 
             domain_concepts = domain_concept_ids if not self.guide_with_annotator else DomainClassFrequency.get_domain_concepts(
                 text=clinical_note, 

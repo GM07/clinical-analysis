@@ -77,8 +77,7 @@ class OntologyPrompter:
         answers = self.group_results_by_notes(dataset)
         
         if return_dataset:
-            small_dataset = dataset.remove_columns(['prompt']) # Prompt can be reconstructed
-            return answers, small_dataset
+            return answers, dataset
         return answers
 
     def process_answers(self, answers):

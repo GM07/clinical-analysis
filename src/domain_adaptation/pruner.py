@@ -56,17 +56,22 @@ class Pruner:
             pruned_extractions.append(pruned_extraction)
         return pruned_extractions
 
-    def prune_dataset(self, dataset: ExtractionDataset, input_column: str, alpha: int = 2) -> PrunedConceptDataset:
+    def prune_dataset(self, dataset: ExtractionDataset, input_columns: List[str], alpha: int = 2) -> PrunedConceptDataset:
         """
         Prunes the dataset
 
         Args:
             dataset: The dataset to prune
-            input_column: The column containing the extractions
+            input_columns: The columns containing the extractions
             output_column: The column to save the pruned extractions
             alpha: The number of ancestors to consider
         """
-        output_column = f'{input_column}_{self.domain_formatted}'
-        logger.info(f'Pruning the dataset with column {input_column} and output column {output_column}')
-        dataset.data[output_column] = dataset.data[input_column].apply(lambda x: self.prune(x, alpha=alpha))
-        return PrunedConceptDataset(columns=[output_column], data=dataset.data)
+        output_columns = []
+
+        for input_column in input_columns:
+            output_column = f'{input_column}_{self.domain_formatted}'
+            output_columns.append(output_column)
+            logger.info(f'Pruning the dataset with column {input_column} and output column {output_column}')
+            dataset.data[output_column] = dataset.data[input_column].apply(lambda x: self.prune(x, alpha=alpha))
+
+        return PrunedConceptDataset(columns=output_columns, data=dataset.data)

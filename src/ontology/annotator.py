@@ -4,8 +4,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import logging
 
-import spacy
-from spacy import displacy
 
 from src.ontology.snomed import Snomed
 
@@ -56,6 +54,9 @@ class Annotator(ABC):
             render_labels: Whether to render the labels the concepts or their ids. If True, `snomed` must be provided.
             snomed: Snomed instance to find the labels of the concepts. Needed when `render_snomed_ids` = True
         """
+        import spacy
+        from spacy import displacy
+
         if render_labels:
             assert snomed is not None, 'Rendering option set to concept labels, but a snomed instance was not provided in the call render()'
 

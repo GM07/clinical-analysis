@@ -500,9 +500,11 @@ class ExtractionDataset(Dataset):
     def result_columns(self,):
         return [self.column]
 
-    def prepare(self):
+    def prepare(self, columns: List[str] = None):
 
-        for column in self.result_columns():
+        col = columns if columns else self.result_columns()
+
+        for column in col:
             self.data[column] = self._get_extractions(column)
 
     def _get_extractions(self, column):
@@ -539,7 +541,7 @@ class PrunedConceptDataset(ExtractionDataset):
     """
     Dataset format used to store the pruned concepts of each clinical note.
 
-    The column `column` corresponds to the column that contains the pruned extractions.
+    The columns corresponds to the column that contains the pruned extractions.
     """
     def __init__(self, columns: List[str], dataset_path: str = None, data: pd.DataFrame = None):
         self.columns = columns
