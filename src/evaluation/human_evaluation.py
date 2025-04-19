@@ -6,6 +6,8 @@ from src.data.dataset import VerbalizedExtractionDataset
 from datasets import Dataset as HuggingFaceDataset, concatenate_datasets
 import pandas as pd
 
+from src.generation.templates import PRUNED_CONCEPT_TEMPLATE
+
 logger = logging.getLogger(__name__)
 
 standard_domain_mapping = {
@@ -148,7 +150,6 @@ class HumanEvaluation:
         # Trick to prevent loading the dataset since we only want the processing on the columns
         col_to_domains = dict(zip(columns, map(lambda x: '_'.join(x.split('_')[1:-1]), columns)))
         domains_to_col = dict(zip(map(lambda x: '_'.join(x.split('_')[1:-1]), columns), columns))
-
         dataset = VerbalizedExtractionDataset(columns=columns, dataset_path=dataset_path)
         data = dataset.filter_non_valid_generations()
 
@@ -156,10 +157,12 @@ class HumanEvaluation:
 
         def to_format(x):
             nb_new_samples = len(domains_to_col)
+            prompts = [x[col.replace('verbalized', 'verbalizer_prompt')] for col in columns]
             hadm_id = x['HADM_ID'][0]
             return {
                 'id': [str(uuid.uuid4()) for _ in range(nb_new_samples)],
                 'hadm_id': [hadm_id] * nb_new_samples,
+                'structured': [HumanEvaluation.get_structured_from_prompt(prompt[0]) for prompt in prompts],
                 'clinical_notes': [self.id_to_notes[hadm_id]] * nb_new_samples,
                 'summary': [x[col][0] for col in columns],
                 'expected_domain': [col_to_domains[col] for col in columns],
@@ -207,6 +210,7 @@ class HumanEvaluation:
             return {
                 'id': [str(uuid.uuid4()) for _ in range(nb_samples)],
                 'hadm_id': x['HADM_ID'],
+                'structured': [''] * nb_samples,
                 'clinical_notes': self.id_to_notes[x['HADM_ID']],
                 'summary': x[summary_column_name],
                 'expected_domain': x['CATEGORY'],
@@ -226,3 +230,11 @@ class HumanEvaluation:
             dataset.to_csv(output_path)
 
         return dataset
+
+
+    BEGIN, END = PRUNED_CONCEPT_TEMPLATE.split('{clinical_notes}')
+    def get_structured_from_prompt(prompt):
+        if prompt is None:
+            return None
+        
+        return prompt.replace(HumanEvaluation.BEGIN, '').replace(HumanEvaluation.END, '')
