@@ -10,9 +10,9 @@ from src.ontology.snomed import Snomed
 
 logger = logging.getLogger(__name__)
 
-class ConceptEvaluatorPromptGenerator:
+class ConceptValueEvaluatorPromptGenerator:
     """
-    Used to generate prompts from a set of extractions for an evaluator model to judge whether a concept is present in a clinical note.
+    Used to generate prompts from a set of extractions for an evaluator model to judge whether a concept and its extraction is is valid in a clinical note.
 
     In our case, we use Llama-70B-Instruct and Prometheus to evaluate whether the generations and concepts make sense with a clinical note.
     """
@@ -25,7 +25,7 @@ Here is the clinical note:
 Here is what the model extracted: 
 {concept_extraction}
 
-Should the model have answered N/A ? Answer with Yes or No only. Do not generate anything else.
+Did the model answer correctly ? Answer with Yes or No only. Do not generate anything else.
 """
 
     def __init__(self, dataset_path: str, snomed_path: str, snomed_cache_path: str):
@@ -65,11 +65,11 @@ Should the model have answered N/A ? Answer with Yes or No only. Do not generate
         self._explode_extractions(constrained_extractions, notes, result, 'constrained')
 
         dataset = Dataset.from_dict(result)
-        dataset = dataset.map(lambda x: {'prompt': self.general_format(x)}, desc='Generating prompts')
+        dataset = dataset.map(lambda x: {'prompt': self.generate_prompt(x)}, desc='Generating prompts')
         dataset = dataset.remove_columns(['note'])
         return dataset
 
-    def general_format(self, x):
+    def generate_prompt(self, x):
         label = x['concept_label']
         concept_extract = f"{x['concept_label']} : {x['extraction']}"
         clinical_note = x['note'].strip()
@@ -80,11 +80,38 @@ Should the model have answered N/A ? Answer with Yes or No only. Do not generate
         )
 
     def _explode_extractions(self, extractions: List[Dict[str, str]], notes: List[str], result: Dict[str, List[str]], method: str):
-        for normal, note in tqdm(zip(extractions, notes), total=len(extractions), desc=f'Generating samples for {method} method'):
-            for concept, extraction in normal.items():
+        for method_extraction, note in tqdm(zip(extractions, notes), total=len(extractions), desc=f'Generating samples for {method} method'):
+            for concept, extraction in method_extraction.items():
                 label = self.snomed.get_label_from_id(concept)
                 result['note'].append(note)
                 result['concept_id'].append(concept)
                 result['concept_label'].append(label)
                 result['extraction'].append(extraction)
                 result['method'].append(method)
+
+
+class ConceptEvaluatorPromptGenerator(ConceptValueEvaluatorPromptGenerator):
+    """
+    Used to generate prompts from a set of extractions for an evaluator model to judge whether a concept and its extraction is is valid in a clinical note.
+
+    In our case, we use Llama-70B-Instruct and Prometheus to evaluate whether the generations and concepts make sense with a clinical note.
+    """
+
+    GENERAL_TEMPLATE = """Your goal is to evaluate whether a concept is present on a clinical note.
+
+Here is the clinical note:
+{clinical_note}
+
+Is the concept "{concept}" present in the clinical note provided ? Answer with yes or no only. Do not generate anything else.
+"""
+    def __init__(self, dataset_path: str, snomed_path: str, snomed_cache_path: str):
+        super().__init__(dataset_path, snomed_path, snomed_cache_path)
+
+    def generate_prompt(self, x):
+        label = x['concept_label']
+        label = x['concept_label']
+        clinical_note = x['note'].strip()
+        return self.GENERAL_TEMPLATE.format(
+            concept=label,
+            clinical_note=clinical_note,
+        )

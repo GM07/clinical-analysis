@@ -75,7 +75,7 @@ class DomainExtractionPipeline(ExtractionPipeline):
             constrained_model=self.ontology_constrained_model
         )
 
-        if generation_config.batch_size != extraction_config:
+        if generation_config.batch_size != extraction_config.batch_size:
             logger.info(f"Mismatch between generation's batch size and extraction's batch size, updating generation to {extraction_config.batch_size}")
             generation_config.batch_size = extraction_config.batch_size
         

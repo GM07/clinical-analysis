@@ -16,11 +16,15 @@ parser = ArgumentParser(description='Program that extracts information using ont
 parser.add_argument('--dataset_path', type=str, required=True, help='Path to dataset csv file')
 parser.add_argument('--output_path', type=str, required=True, help='Path to output dataset csv file')
 parser.add_argument('--checkpoint', type=str, help='Model checkpoint')
+parser.add_argument('--tokenizer', type=str, default=None, help='Model tokenizer')
 parser.add_argument('--snomed', type=str, help='Path to snomed ontology file (.owx)')
 parser.add_argument('--snomed_cache', type=str, help='Path to snomed cache file')
 parser.add_argument('--medcat', type=str, help='Path to medcat annotator checkpoint')
 parser.add_argument('--nb_concepts', type=int, default=5, help='Number of concepts to extract')
-parser.add_argument('--batch_size', type=int, default=16, help='Number of examples to process in parallel')
+parser.add_argument('--batch_size', type=int, default=5, help='Number of examples to process in parallel')
+parser.add_argument('--configs', type=str, default='all', help='Which config to use separated with a comma (hps, hp, hs, ps, h, p, s, beam, normal)')
+
+CONFIG_VALUES = ['hps', 'hp', 'hs', 'ps', 'h', 'p', 'pn', 's', 'beam', 'normal', 'all']
 
 def main():
 
@@ -28,11 +32,18 @@ def main():
 
     print('Called with arguments : ', args)
 
+
+    configs = set(map(lambda x: x.strip(), args.configs.split(',')))
+
+    for config in configs:
+        assert config in CONFIG_VALUES, f'Config {config} is not valid'
+
     print('Loading dataset from : ', args.dataset_path)
     dataset = HuggingFaceDataset.from_csv(args.dataset_path)
 
     pipeline = AblationPipeline(
         checkpoint_path=args.checkpoint,
+        tokenizer_path=args.tokenizer,
         snomed_path=args.snomed,
         snomed_cache_path=args.snomed_cache,
         medcat_path=args.medcat,
@@ -43,7 +54,8 @@ def main():
         nb_concepts=args.nb_concepts, 
         batch_size=int(args.batch_size),
         save_every_config=True,
-        saving_path=args.output_path.replace('.csv', '_{config_name}.joblib')
+        saving_path=args.output_path.replace('.csv', '_{config_name}.joblib'),
+        generation_configs=configs
     )
 
     output_results = pipeline(dataset['TEXT'], extraction_config)

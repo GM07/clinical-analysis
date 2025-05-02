@@ -167,25 +167,37 @@ class DatasetInferencePipeline:
         Returns:
         Newly added column with the chat template applied
         """
-        def create_chat_template_row(data):
-            inputs = data[column]
+             
+        # Define a temporary column name for the intermediate chat format
+        tmp_column = f'{column}_chat_messages'
+        if tmp_column in dataset.column_names:
+            # Remove temporary column if it exists from a previous run
+            dataset = dataset.remove_columns(tmp_column)
 
-            if isinstance(inputs, str):
-                inputs = [[{'role': 'user', 'content': x}] if system_prompt is None \
-                          else [{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': x}] for x in inputs]
 
-            return {output_column: inputs}
-        
-        dataset = dataset.map(create_chat_template_row, desc='Creating chat template')
+        def create_chat_template_row_batch(batch):
+            inputs_batch = batch[column]
+            output = []
+            for inputs in inputs_batch:
+                 if isinstance(inputs, str):
+                    chat = [{'role': 'user', 'content': inputs}]
+                    if system_prompt is not None:
+                        chat.insert(0, {'role': 'system', 'content': system_prompt})
+                 else:
+                    # Assume it's already in a format close to chat (e.g., list of messages)
+                    logger.warning(f"Input for templating is not a string: {type(inputs)}. Assuming it's already in chat message list format.")
+                    chat = inputs # Or apply transformation if needed
 
-        # templated = []
-        # for batch in tqdm(dataset.iter(batch_size=32), total=len(dataset) // 32, desc='Applying chat template'):
-            # for x in batch[output_column]:
-                # templated.append(self.apply_chat_template(x))
-        
-        # dataset = dataset.remove_columns(output_column)
-        # dataset = dataset.add_column(output_column, templated)
-        dataset = dataset.map(lambda x: {output_column: self.apply_chat_template(x[output_column])}, desc='Applying chat template', num_proc=1)
+                 output.append(self.apply_chat_template(chat))
+            return {output_column: output}
+
+        logger.info(f"Converting column '{column}' to chat message format in temporary column '{output_column}'")
+        dataset = dataset.map(
+            create_chat_template_row_batch,
+            batched=True, # Process in batches
+            desc='Creating chat message format'
+        )
+
         return dataset[output_column]
     
     @abstractmethod

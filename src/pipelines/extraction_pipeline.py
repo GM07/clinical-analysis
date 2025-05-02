@@ -129,9 +129,10 @@ class ExtractionPipeline(Pipeline):
         if extraction_config.save_internal_dataset:
             answers, dataset = results
             small_dataset = dataset.remove_columns(['clinical_note']) # clinical notes can be large so we don't save these
-            small_dataset.to_csv(extraction_config.internal_dataset_saving_path)
+            small_dataset.to_csv(extraction_config.internal_dataset_saving_path)        
 
         if extraction_config.return_internal_dataset:
+            answers, dataset = results
             return answers, dataset
 
         return results

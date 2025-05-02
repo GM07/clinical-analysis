@@ -1,6 +1,6 @@
 
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar, Dict, List, Optional, Tuple, Union
 import time
 import logging
@@ -42,13 +42,14 @@ class GenerationConfig:
     window_size: int = 5
     diversity_penalty: float = 1.0
     batch_size: int = 1
+    use_rouge_for_restrictions: bool = True
     
     # Weights associated with the original beam scores and the boost scores.
-    # The final scores will be `score_weights[0]` * original_beam_scores + `score_weights[1]` * custom_scores
-    score_weights: Tuple[float, float] = (0.0, 1.0)
+    # The final scores will be `(score_weights[0]` * original_beam_scores + `score_weights[1]` * custom_scores) / (score_weights[0] + score_weights[1])
+    score_weights: Tuple[float, float] = (0.5, 0.5)
 
     # Corresponds to H_bf, P_bf and G_bf
-    score_boost_factors = [3.0, 1.0, 10.0]
+    score_boost_factors: List[float] = field(default_factory=lambda: [3.0, 1.0, 10.0])
 
     # The exclude_ids list contains classes that are not entirely linked to concepts
     # but more like values or environments. This is usually what is present in the 
@@ -56,6 +57,12 @@ class GenerationConfig:
     # the decoding process
     exclude_ids: ClassVar[set[str]] = set([]) # set(['362981000', '419891008', '106237007'])
     
+    # Whether logs need to be conserved during that process or not
+    log: bool = False 
+
+    # List of logs
+    logs = []
+
     @classmethod
     def greedy_search(cls, batch_size: int = 1):
         """
@@ -77,27 +84,42 @@ class GenerationConfig:
         return instance
 
     @classmethod
-    def ontology_beam_search(cls, batch_size: int = 1):
+    def ontology_beam_search(cls, batch_size: int = 1, h_score: float = 3, p_score: float = 1, s_score: float = 10, use_rouge_for_restrictions: bool = True):
         """
         Returns an instance of this class leading to ontology-based beam search
         """
         instance = cls()
         instance.use_group_beam_search = True
-        instance.score_boost_factors = [3.0, 1.0, 10.0]
         instance.batch_size = batch_size
+        instance.score_boost_factors = [h_score, p_score, s_score]
+        instance.use_rouge_for_restrictions = use_rouge_for_restrictions
         return instance
 
-    def with_hierarchy_score(self, hierarchy_score: float):
-        self.score_boost_factors[0] = hierarchy_score
-        return self
+    # def with_hierarchy_score(self, hierarchy_score: float):
+    #     self.score_boost_factors[0] = hierarchy_score
+    #     return self
 
-    def with_property_score(self, property_score: float):
-        self.score_boost_factors[1] = property_score
-        return self
+    # def with_property_score(self, property_score: float):
+    #     self.score_boost_factors[1] = property_score
+    #     return self
 
-    def with_similarity_score(self, similarity_score: float):
-        self.score_boost_factors[2] = similarity_score
-        return self
+    # def with_similarity_score(self, similarity_score: float):
+    #     self.score_boost_factors[2] = similarity_score
+    #     return self
+
+    # def without_rouge_for_property_score(self):
+    #     self.use_rouge_for_restrictions = False
+    #     return self
+
+    def log_scores_entry(self, generation_window: str, base_class: str, concepts_detected: List[str], h_score: float, p_score: float, s_score: float):
+        self.logs.append({
+            'context': generation_window,
+            'base_class': base_class,
+            'concepts_detected': concepts_detected,
+            'h': h_score,
+            'p': p_score,
+            's': s_score
+        })
 
 class OntologyBeamScorerConfig:
     """
@@ -213,7 +235,7 @@ class OntologyBeamScorer(BeamSearchScorer):
         
         if base_class_id not in parents:
             # We don't want concepts from other branches
-            return -1.0
+            return 0.0
         
         return 1.0
 
@@ -261,15 +283,16 @@ class OntologyBeamScorer(BeamSearchScorer):
                     property_score += 1 / (len(property.ids_to_ids))
                 
         # Indirect property link : Add the rouge score between all property values and the context
-        current_property_knowledge = ' '.join(map(lambda x: x.get_value(), properties))        
-        rouge_score = self.rouge_scorer.score(context, current_property_knowledge)['rouge2'].precision
+        if self.config.generation_config.use_rouge_for_restrictions:
+            current_property_knowledge = ' '.join(map(lambda x: x.get_value(), properties))        
+            rouge_score = self.rouge_scorer.score(context, current_property_knowledge)['rouge2'].precision
 
-        property_score += rouge_score
+            property_score += rouge_score
 
         # We divide by two since the direct property link is between 0 and 1
         # and the indirect property link is between 0 and 1. Thus the max value
         # of the property score is 2
-        return property_score / 2 
+        return property_score / 2 if self.config.generation_config.use_rouge_for_restrictions else property_score
 
     def get_beam_boost(self, input_ids, group_index):
         """
@@ -300,6 +323,9 @@ class OntologyBeamScorer(BeamSearchScorer):
             avg_property_score /= max(1, len(annotations))
             groundedness_score = self.get_groundedness_beam_boost(i, decoded_context) if self.config.generation_config.score_boost_factors[2] > 0 else 0
 
+            if self.config.generation_config.log:
+                self.config.generation_config.log_scores_entry(decoded_context, base_class_id, annotations, avg_hierarchy_score, avg_property_score, groundedness_score)
+
             freq_adapted_score = \
                   self.config.generation_config.score_boost_factors[0] * avg_hierarchy_score \
                 + self.config.generation_config.score_boost_factors[1] * avg_property_score \
@@ -307,7 +333,6 @@ class OntologyBeamScorer(BeamSearchScorer):
 
             scores.append(freq_adapted_score)
         return scores
-    
     def compute_new_beam_scores(self, current_scores, ontology_scores):
         """
         Given the current beam scores and the new ontology scores, computes a weighted average
@@ -320,18 +345,20 @@ class OntologyBeamScorer(BeamSearchScorer):
         Returns:
         Weighted average of current scores and ontology scores
         """
-        ontology_scores = torch.tensor(
-            ontology_scores, 
-            device=current_scores.device, 
-            dtype=torch.float32
-        )
-        ontology_scores = torch.nn.functional.log_softmax(ontology_scores, dim=-1)
+        batch_size = current_scores.size(0) // self.group_size
 
-        weights = self.config.generation_config.score_weights
-        final_results = (weights[0] * current_scores + weights[1] * ontology_scores) / (weights[0] + weights[1])
+        scores1 = current_scores.reshape(batch_size, self.group_size)
+        p1 = scores1.exp()
 
-        del ontology_scores
-        return final_results
+        scores2 = torch.tensor(ontology_scores, device=current_scores.device).view_as(scores1)
+        p2 = torch.nn.functional.softmax(scores2 + 1e-12, dim=-1)
+        p2 = p2 - p2.min()
+
+        w0, w1 = self.config.generation_config.score_weights
+        mixed_p = w0 * p1 + w1 * p2
+        mixed_scores = mixed_p.log().view_as(current_scores)
+
+        return mixed_scores
 
     def process(
         self, 
@@ -365,7 +392,6 @@ class OntologyBeamScorer(BeamSearchScorer):
             if group_index >= self.config.generation_config.nb_beam_groups - 1:
                 self.nb_tokens_generated = 1 # While we modified the scores, a token was processed
         else:
-            # print('not modifying')
             if group_index >= self.config.generation_config.nb_beam_groups - 1:
                 # We increase the number of tokens generated only if we have processed
                 # every group since this function is called for every group for every token

@@ -1,11 +1,11 @@
-
+import os
 from itertools import groupby
 from operator import itemgetter
-from collections import defaultdict
 from typing import List
 
 import logging
 from datasets import Dataset
+import joblib
 from tqdm import tqdm
 
 from src.generation.ontology_beam_scorer import GenerationConfig, GenerationInput
@@ -26,6 +26,7 @@ class OntologyPrompter:
         annotator: Annotator = None, 
         template: OntologyPromptTemplate = OntologyPromptTemplate(),
         system_prompt: str = None,
+        log_path: str = None
     ):
         """
         Initializes an GuidedOntologyPrompter object that handles the extraction of medical concepts from text.
@@ -37,16 +38,17 @@ class OntologyPrompter:
             template: An OntologyPromptTemplate instance defining the prompt format (default: OntologyPromptTemplate())
             dataset_mode: Whether the prompt will be stored in a dataset instead of being sent to the model
             system_prompt: System prompt used to generate the prompts
-
             guide_with_annotator: Whether to guide the prompting process with the annotator or simply prompt for every concept. 
-            If True: The prompter will first tag all concepts in the clinical notes, get the ancestors and compute which concepts are present in the domain set
-            If False: The prompter will ask the model to generate answers for all concepts in the domain set
+                If True: The prompter will first tag all concepts in the clinical notes, get the ancestors and compute which concepts are present in the domain set
+                If False: The prompter will ask the model to generate answers for all concepts in the domain set
+            log_path: Path to a logging file where logs will be stored (if not provided, logs are not stored)            
         """
         self.constrained_model = constrained_model
         self.snomed = snomed
         self.annotator = annotator
         self.template = template
         self.system_prompt = system_prompt
+        self.log_path = log_path
 
     def process_dataset(
         self, 
@@ -57,6 +59,7 @@ class OntologyPrompter:
         clinical_note_col: str = 'clinical_note',
         concept_id_col: str = 'concept_id'
     ):
+        logs = []
         results = []
         batch_size = generation_config.batch_size
         for batch in tqdm(dataset.iter(batch_size=batch_size), total=len(dataset) // batch_size + 1, desc='Processing batches...'):
@@ -64,15 +67,22 @@ class OntologyPrompter:
                 prompts=batch[prompt_col], 
                 clinical_notes=batch[clinical_note_col], 
                 concept_ids=batch[concept_id_col],
-                system_prompt=self.system_prompt
+                system_prompt=self.system_prompt,
             )
             
             generation_config.batch_size = len(generation_input.prompts)
+            generation_config.log = self.log_path is not None
             answers = self.constrained_model.generate(generation_input, generation_config)
             answers = self.process_answers(answers)
             results.extend(answers)
+            
+            if self.log_path:
+                logs.append(generation_config.logs)
         
         dataset = dataset.add_column('result', results)
+        
+        if len(logs) > 0:
+            joblib.dump(logs, self.log_path)
 
         answers = self.group_results_by_notes(dataset)
         

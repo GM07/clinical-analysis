@@ -47,7 +47,7 @@ Score 5: The model's short summary mentions everything related the the medical c
 
         rubric = Prometheus.RUBRICS[rubric_type]
 
-        Prometheus.PROMPT_TEMPLATE.format(
+        return Prometheus.SYSTEM_PROMPT + '\n\n' + Prometheus.PROMPT_TEMPLATE.format(
             instruction=instruction,
             response_A=response_a,
             response_B=response_b,

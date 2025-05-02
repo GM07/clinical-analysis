@@ -60,16 +60,24 @@ class GuidedOntologyPrompter(OntologyPrompter):
                 annotator=self.annotator, 
                 top_n=top_n
             )
-            
-            prompts = self.create_prompts(clinical_note, most_frequent_concepts)
 
-            for prompt, concept in zip(prompts, most_frequent_concepts):
+            if len(most_frequent_concepts) == 0:
                 dataset['id'].append(id)
                 dataset['note_id'].append(note_id)
                 dataset['clinical_note'].append(clinical_note)
-                dataset['prompt'].append(prompt)
-                dataset['concept_id'].append(concept)
+                dataset['prompt'].append('')
+                dataset['concept_id'].append('')
                 id += 1
+            else:            
+                prompts = self.create_prompts(clinical_note, most_frequent_concepts)
+
+                for prompt, concept in zip(prompts, most_frequent_concepts):
+                    dataset['id'].append(id)
+                    dataset['note_id'].append(note_id)
+                    dataset['clinical_note'].append(clinical_note)
+                    dataset['prompt'].append(prompt)
+                    dataset['concept_id'].append(concept)
+                    id += 1
 
             note_id += 1
         

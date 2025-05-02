@@ -44,10 +44,9 @@ class DomainOntologyPrompter(OntologyPrompter):
             template: An OntologyPromptTemplate instance defining the prompt format (default: OntologyPromptTemplate())
             dataset_mode: Whether the prompt will be stored in a dataset instead of being sent to the model
             system_prompt: System prompt used to generate the prompts
-
             guide_with_annotator: Whether to guide the prompting process with the annotator or simply prompt for every concept. 
-            If True: The prompter will first tag all concepts in the clinical notes, get the ancestors and compute which concepts are present in the domain set
-            If False: The prompter will ask the model to generate answers for all concepts in the domain set
+                If True: The prompter will first tag all concepts in the clinical notes, get the ancestors and compute which concepts are present in the domain set
+                If False: The prompter will ask the model to generate answers for all concepts in the domain set
         """
 
         OntologyPrompter.__init__(
@@ -63,7 +62,7 @@ class DomainOntologyPrompter(OntologyPrompter):
         
         assert self.annotator is not None, 'An annotator must be provided if `guide_with_annotator` = True'
 
-    def __call__(self, clinical_notes: List[str], domain_concept_ids: Set[str], generation_config: GenerationConfig = GenerationConfig(), return_dataset: bool = False):
+    def __call__(self, clinical_notes: List[str], domain_concept_ids: Set[str], generation_config: GenerationConfig = GenerationConfig(), return_dataset: bool = False, dataset_cache: Dataset = None):
         """
         Starts the extraction on a dataset
 
@@ -72,11 +71,16 @@ class DomainOntologyPrompter(OntologyPrompter):
             domain_concept_ids: Set of concept ids in snomed ontology that are related to the domain
             generation_config: Generation config to be used by the model
             return_dataset: Whether to return the internal dataset used for generation
+            dataset_cache: If multiple calls are needed for this function, this argument can be used to prevent regenerating the internal dataset everytime
 
         Returns:
         List of prompts per clinical notes
         """
-        dataset: Dataset = self.generate_dataset(clinical_notes=clinical_notes, domain_concept_ids=domain_concept_ids)
+        if dataset_cache is not None:
+            logger.info(f'Using dataset cache of {len(dataset_cache)} rows')
+            dataset = dataset_cache
+        else:
+            dataset: Dataset = self.generate_dataset(clinical_notes=clinical_notes, domain_concept_ids=domain_concept_ids)
 
         return self.process_dataset(dataset, generation_config, return_dataset)
 
