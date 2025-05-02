@@ -1,12 +1,15 @@
 import logging
-from typing import List
+import re
 import uuid
-from src.data.dataset import VerbalizedExtractionDataset
+from typing import List
 
 from datasets import Dataset as HuggingFaceDataset, concatenate_datasets
 import pandas as pd
 
+from src.data.dataset import VerbalizedExtractionDataset
+from src.domain_adaptation.prompt_generator import PrunedConceptPromptGenerator
 from src.generation.templates import PRUNED_CONCEPT_TEMPLATE
+from src.ontology.snomed import Snomed
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +19,7 @@ standard_domain_mapping = {
     'physician_': 'Physician',
     'Nursing': 'Nursing',
     'nursing': 'Nursing',
+    'nursing_other': 'Nursing',
     'radiology': 'Radiology',
     'Radiology': 'Radiology'
 }
@@ -49,8 +53,13 @@ class HumanEvaluation:
     """
 
 
-    def __init__(self, mimic_path: str):
+    def __init__(self, mimic_path: str, snomed_path: str, snomed_cache_path: str):
         self.mimic_path = mimic_path
+        self.snomed_path = snomed_path
+        self.snomed_cache_path = snomed_cache_path
+
+        self.snomed = Snomed(snomed_path, snomed_cache_path)
+
         self.dataset = pd.read_csv(mimic_path)
 
         self.create_index()
@@ -77,7 +86,8 @@ class HumanEvaluation:
         output_path: str = None, 
         max_samples_per_dataset: int = 10,
         verbalized_methods: List[str] = None,
-        baseline_methods: List[str] = None
+        baseline_methods: List[str] = None,
+        structured_datasets_paths: List[str] = None,
     ):
         """
         Converts a list of verbalized datasets and a list of baseline datasets to a human evaluation dataset
@@ -99,14 +109,27 @@ class HumanEvaluation:
         else:
             assert len(verbalized_methods) == len(verbalized_datasets_paths), 'verbalized_methods must be the same length as verbalized_datasets_paths'
 
+        if structured_datasets_paths is not None:
+            assert len(structured_datasets_paths) == len(verbalized_datasets_paths), 'structured_dataset_paths must be the same length as verbalized_datasets_paths'
+
         if baseline_methods is None:
             baseline_methods = [''] * len(baseline_datasets_paths)
         else:
             assert len(baseline_methods) == len(baseline_datasets_paths), 'baseline_methods must be the same length as baseline_datasets_paths'
 
         logger.info(f'Converting {len(verbalized_datasets_paths)} verbalized datasets')
-        for verbalized_dataset_path, method in zip(verbalized_datasets_paths, verbalized_methods):
-            dataset = self.from_verbalized_dataset(verbalized_dataset_path, verbalized_columns, method=method, output_path=None, max_samples=max_samples_per_dataset)
+        for i, (verbalized_dataset_path, method) in enumerate(zip(verbalized_datasets_paths, verbalized_methods)):
+            structured_dataset_path = None
+            if structured_datasets_paths is not None:
+                structured_dataset_path = structured_datasets_paths[i]
+            dataset = self.from_verbalized_dataset(
+                verbalized_dataset_path, 
+                verbalized_columns, 
+                method=method, 
+                output_path=None, 
+                max_samples=max_samples_per_dataset,
+                structured_path=structured_dataset_path
+            )
             datasets.append(dataset)
 
         logger.info(f'Converting {len(baseline_datasets_paths)} baseline datasets')
@@ -134,7 +157,8 @@ class HumanEvaluation:
         columns: List[str],
         method: str, 
         output_path: str = None, 
-        max_samples: int = 10
+        max_samples: int = 10,
+        structured_path: str = None
     ):
         """
         Converts a verbalized dataset to a human evaluation dataset 
@@ -154,15 +178,34 @@ class HumanEvaluation:
         data = dataset.filter_non_valid_generations()
 
         dataset = HuggingFaceDataset.from_pandas(data)
+        if structured_path:
+            structured_dataset = HuggingFaceDataset.from_csv(structured_path)
 
-        def to_format(x):
+        # Will contain the column names in the form {method}_{domain}
+        method_domain_columns = [col.replace('_verbalized', '') for col in dataset.column_names]
+
+        def to_format(x, i):
             nb_new_samples = len(domains_to_col)
             prompts = [x[col.replace('verbalized', 'verbalizer_prompt')] for col in columns]
             hadm_id = x['HADM_ID'][0]
+            structured = [HumanEvaluation.get_structured_from_prompt(prompt[0]) for prompt in prompts]
+
+            if structured_path:
+                structured = [structured_dataset[i[0]][col.replace('_verbalized', '')] for col in columns]
+                prompt_generator = PrunedConceptPromptGenerator(
+                    mimic=x,
+                    snomed=self.snomed,
+                    input_columns=[col.replace('_verbalized', '') for col in columns]
+                )
+
+                structured_prompts = prompt_generator.generate_prompts()
+                structured = structured_prompts[[col.replace('_verbalized', '_verbalizer_prompt') for col in columns]].iloc[0].tolist()
+                print(len(structured))
+
             return {
                 'id': [str(uuid.uuid4()) for _ in range(nb_new_samples)],
                 'hadm_id': [hadm_id] * nb_new_samples,
-                'structured': [HumanEvaluation.get_structured_from_prompt(prompt[0]) for prompt in prompts],
+                'structured': structured,
                 'clinical_notes': [self.id_to_notes[hadm_id]] * nb_new_samples,
                 'summary': [x[col][0] for col in columns],
                 'expected_domain': [col_to_domains[col] for col in columns],
@@ -174,7 +217,7 @@ class HumanEvaluation:
                 'fluency': [0] * nb_new_samples,
             }
 
-        dataset = dataset.map(to_format, batched=True, batch_size=1, desc='Converting to human evaluation format', remove_columns=dataset.column_names)
+        dataset = dataset.map(to_format, batched=True, batch_size=1, desc='Converting to human evaluation format', remove_columns=dataset.column_names, with_indices=True)
         dataset = dataset.filter(lambda x: x['summary'] is not None, desc='Filtering out empty summaries')
         dataset = dataset.shuffle(seed=42)
         dataset = dataset.select(range(max_samples))
@@ -237,4 +280,7 @@ class HumanEvaluation:
         if prompt is None:
             return None
         
-        return prompt.replace(HumanEvaluation.BEGIN, '').replace(HumanEvaluation.END, '')
+        prompt = prompt.replace(HumanEvaluation.BEGIN, '').replace(HumanEvaluation.END, '')
+        matches = re.split(r'### Clinical note \d+', prompt)
+        matches = list(map(lambda x: x.strip(), filter(lambda x: len(x) > 2 and x != '### Clinical note', matches)))
+        return prompt
