@@ -63,7 +63,7 @@ class DomainClassFrequency:
         joblib.dump(self, path)
 
     @staticmethod
-    def load(path: str):
+    def load(path: str) -> 'DomainClassFrequency':
         """
         Loads the domain class frequencies
         """

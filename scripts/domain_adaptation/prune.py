@@ -22,6 +22,7 @@ parser.add_argument('--snomed', type=str, required=True, help='Path to SNOMED fi
 parser.add_argument('--snomed_cache', type=str, required=True, help='Path to SNOMED cache file')
 parser.add_argument('--dcf_files', type=str, nargs='+', required=True, help='Path to DCF files (one per domain)')
 parser.add_argument('--alpha', type=int, nargs='+', default=[1], help='Alpha value')
+parser.add_argument('--smart', type=bool, default=False, help='Whether smart pruning is used')
 # parser.add_argument('--output_dataset', type=str, required=True, help='Path to output dataset file (must be .csv)')
 
 def main():
@@ -40,9 +41,9 @@ def main():
         for dcf_path in args.dcf_files:
             dcf = DomainClassFrequency.load(dcf_path)
             pruner = Pruner(dcf, snomed)
-            pruner.prune_dataset(dataset, args.input_columns, alpha)
+            pruner.prune_dataset(dataset, args.input_columns, alpha, args.smart)
         
-        output_path = args.dataset.replace('.csv', f'_a{alpha}.csv')
+        output_path = args.dataset.replace('.csv', f'_a{alpha}{"s" if args.smart else ""}.csv')
         dataset.save(output_path)
 
 if __name__ == '__main__':

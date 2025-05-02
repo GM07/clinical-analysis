@@ -137,12 +137,12 @@ class OntologyConstrainedModel:
         input_ids = tokenized_inputs['input_ids'].to(self.get_device())
         attention_mask = tokenized_inputs['attention_mask'].to(self.get_device())
         hf_generation_config = HFGenerationConfig(
-                top_p=1,
-                num_beams=generation_config.nb_beams,  # Number of beams for beam search
-                num_return_sequences=1,  # Return all beams
-                num_beam_groups=generation_config.nb_beam_groups,
-                diversity_penalty=generation_config.diversity_penalty,
-                seed=42
+            top_p=1,
+            num_beams=generation_config.nb_beams,  # Number of beams for beam search
+            num_return_sequences=1,  # Return all beams
+            num_beam_groups=generation_config.nb_beam_groups,
+            diversity_penalty=generation_config.diversity_penalty,
+            seed=42
         )
 
         with torch.no_grad():

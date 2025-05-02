@@ -120,8 +120,8 @@ class PrometheusResultDataset(Dataset):
     """
     REQUIRED_COLUMNS = ['a', 'b', 'concept', 'a_result', 'b_result', 'result']
     
-    def __init__(self, dataset_path: str):
-        super().__init__(dataset_path)
+    def __init__(self, dataset_path: str = None, data: pd.DataFrame = None):
+        super().__init__(dataset_path=dataset_path, data=data)
         self.verify()
 
     def verify(self):
@@ -136,9 +136,15 @@ class PrometheusResultParser:
     Parses the result of Prometheus and calculates the win rate for each method
     """
 
-    def __init__(self, prom_result_path: str):
-        self.prom_result_path = prom_result_path
-        self.dataset = PrometheusResultDataset(self.prom_result_path)
+    def __init__(self, dataset_path: str = None, data: pd.DataFrame = None):
+        """
+        `dataset_path` or `data` must be provided. However, only one of them must be provided
+
+        Args:
+            dataset_path: Path to dataset (csv)
+            data: DataFrame containing the data
+        """
+        self.dataset = PrometheusResultDataset(dataset_path=dataset_path, data=data)
         self.decision_pattern = r'(?:\[?Result\]?:?)\s*(N\/A|A|B)\s*(or|and)?\s*(A|B)?' #r'(?:\[RESULT\]) (A|B)'
         self.tie_pattern = r'(?:\[RESULT\]) (A|B) or (A|B)'
         self.parse()
@@ -369,25 +375,40 @@ class PrometheusResultParser:
         plt.tight_layout()
         return plt
 
-
-    def heatmap_view(self, effective_matches: bool = True, method_names: List[str] = None, title: str = None):
+    def heatmap_view(self, effective_matches: bool = True, method_names: List[str] = None, title: str = None, custom_sort_fn = None, custom_name_fn = None):
         """
         Create a heatmap visualization of win rates between algorithms.
         
         Args:
-            data (dict): Nested dictionary containing win rates between algorithms
             effective_matches: Whether to include the parsing errors and ties when calculating the win rates
             method_names: Names of the methods
-            method_names_y: Names of the methods for the y-axis
             title: title of the figure
+            custom_sort_fn: Sort function to sort the methods
+            custom_name_fn: Function that generates the display names from the method names
         """
         data = self.calculate_win_rates()
         
-
         if method_names is not None:
-            assert len(method_names) == len(list(data.keys())), 'The names of the methods must be of equal length to the number of methods'
+            assert len(method_names) == len(list(data.keys())), 'The names of the methods must be equal length to the number of methods'
 
+        # Sort algorithms by name length and then by performance
         algorithms = list(data.keys())
+        
+        # Calculate performance metrics (number of wins against other algorithms)
+        algorithm_performance = {}
+        for algo in algorithms:
+            wins_count = 0
+            for opponent in algorithms:
+                if algo != opponent:
+                    win_rate = data[algo][opponent]['effective_win_rate'] if effective_matches else data[algo][opponent]['win_rate']
+                    if win_rate > 50:
+                        wins_count += 1
+            algorithm_performance[algo] = wins_count
+        
+        # Sort algorithms
+        if custom_sort_fn:
+            algorithms.sort(key=lambda algo: custom_sort_fn(algo, algorithm_performance[algo]))
+        
         matrix = []
         info_matrix = []
         
@@ -407,20 +428,38 @@ class PrometheusResultParser:
             info_matrix.append(info_row)
             matrix.append(row)
         
-        text = [[f'{info_val[0]:.1f}% \n ({info_val[1]} / {info_val[2]})' if info_val[0] != 0 else '-' for val, info_val in zip(row, info_row)] for row, info_row in zip(matrix, info_matrix)]
-        text = [[f'{info_val[0]:.1f}% ' if info_val[0] != 0 else '-' for val, info_val in zip(row, info_row)] for row, info_row in zip(matrix, info_matrix)]
-        # Create heatmap
+        # Format the text for the heatmap cells
+        text = [[f'{info_val[0]:.1f}% ' if info_val[0] != 0 else '' for val, info_val in zip(row, info_row)] for row, info_row in zip(matrix, info_matrix)]
+        
+        # Dynamic coloring based on win rates
+        # Create a diverging color scale: red for <50%, white for 50%, green for >50%
+        colorscale = [
+            [0.0, 'rgb(220, 220, 220)'], # White
+            [0.1, '#C62828'],  # Dark red
+            [0.499999, '#E57373'],# Light red 
+            [0.50, 'rgb(100, 200, 100)'], # Light green
+            [1.0, 'rgb(40, 80, 40)'] # Dark green
+        ]
+            
+        
+        # Convert method names to uppercase
+        display_names = method_names
+        if not display_names:
+            display_names = [custom_name_fn(algo) for algo in algorithms] if custom_name_fn else algorithms
+        
         fig = go.Figure(data=go.Heatmap(
             z=matrix,
-            x=method_names if method_names else algorithms,
-            y=method_names if method_names else algorithms,
+            x=display_names,
+            y=display_names,
             text=text,
             texttemplate='%{text}',
-            # textfont={"size": 12},
             zmax=100,
             zmin=0,
-            # colorscale='Reds',
-            colorscale='YlGn', #[(0.0, 'white'), (0.01, 'rgb(201, 109, 109)'), (1.0, 'rgb(115, 201, 109)')],
+            colorscale=colorscale,
+            textfont=dict(
+                color='black'
+            ),
+            zmid=50,  # Set the midpoint of the color scale to 50%
             hoverongaps=False,
             hovertemplate='%{y} vs %{x}<br>Win Rate: %{z:.1f}%<extra></extra>',
             showscale=False
@@ -433,6 +472,7 @@ class PrometheusResultParser:
             xaxis_title='Algorithm B',
             width=500,
             height=500,
-            yaxis=dict(tickangle=-90)  # Rotate y-axis labels 90 degrees
+            # yaxis=dict(tickangle=45),  # Rotate y-axis labels 45 degrees
+            xaxis=dict(tickangle=90)   # Rotate x-axis labels 45 degrees
         )
         return fig

@@ -43,7 +43,7 @@ class HFModelInferencePipeline:
         batched_prompts = batch_elements(inputs, batch_size)
         results = []
         for batch in tqdm(batched_prompts, desc='Running inference', total=len(batched_prompts)):
-            encodeds = self.tokenizer.apply_chat_template(batch, return_tensors="pt", padding=True)
+            encodeds = self.tokenizer(batch, return_tensors="pt", padding=True)
             model_inputs = encodeds.to(self.model.device)
             generated_ids = self.model.generate(**model_inputs, max_new_tokens=max_new_tokens)
             decoded = self.tokenizer.batch_decode(generated_ids)
@@ -64,7 +64,7 @@ class ModelInferencePipeline:
             tokenizer_path = model_path
 
         self.llm = LLM(model=model_path, tokenizer=tokenizer_path, tensor_parallel_size=self.nb_gpus)
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        self.tokenizer = load_tokenizer(tokenizer_path)
 
     def run_inference(self, inputs: List, max_new_tokens: int = 128):
         """

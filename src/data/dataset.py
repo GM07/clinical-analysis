@@ -20,8 +20,11 @@ class Dataset:
 
     def __init__(self, dataset_path: str = None, data: pd.DataFrame = None):
         """
+        `dataset_path` or `data` must be provided. However, only one of them must be provided
+
         Args:
-            dataset_path: Path to dataset. For now, only csv files are supported
+            dataset_path: Path to dataset (csv)
+            data: DataFrame containing the data
         """
 
         assert data is not None or dataset_path is not None, 'One of the arguments `dataset_path` or `data` must be provided'
