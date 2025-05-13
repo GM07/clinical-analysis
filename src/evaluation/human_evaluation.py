@@ -1,10 +1,11 @@
+import ast
 from collections import defaultdict
 import itertools
 import logging
 import os
 import re
 import uuid
-from typing import List
+from typing import Dict, List
 
 from datasets import Dataset as HuggingFaceDataset, concatenate_datasets
 import pandas as pd
@@ -52,7 +53,7 @@ class HumanEvaluationDataset(Dataset):
         self.verify()
 
     def verify(self):
-        for column in ['id', 'notes', 'admission_id', 'structured_summary', 'summary', 'method', 'domain', 'relevance', 'groundedness', 'completeness', 'coherence', 'fluency']:
+        for column in ['id', 'notes', 'admission_id', 'structured_summary', 'summary', 'method', 'domain', 'relevance', 'groundedness', 'completeness', 'fluency']:
             assert column in self.data.columns, f'Column {column} should be in the dataset'
                      
 class HumanEvaluation:
@@ -75,9 +76,6 @@ class HumanEvaluation:
         1 being that the summary contains none of the information in the clinical notes
         5 being that the summary contains all the information in the clinical notes that is relevant to the expected domain
     - method : Which method was used to generate the summary
-    - coherence : Score (1-5) which indicates how coherent the summary is with itself
-        1 being that the summary is not coherent at all
-        5 being that the summary is fully coherent
     - fluency : Score (1-5) which indicates how fluent the summary is
         1 being that the summary is not fluent at all (bullet points, etc.)
         5 being that the summary is fully fluent (no bullet points, etc.)
@@ -144,20 +142,20 @@ class HumanEvaluation:
                     summary = self.verbalized_dataset.data[verbalized_col].iloc[i]
                     structured_summary = self.get_pruned_extractions_of_admission(admission_id, pruned_col, remove_same_exractions)
 
-                    if not self.summary_valid(summary) or not self.summary_valid(structured_summary):
+                    if not self.summary_valid(summary) or not self.summary_valid(structured_summary[0]):
                         continue
 
                     dataset['id'].append(str(uuid.uuid4()))
                     dataset['notes'].append(notes)
                     dataset['admission_id'].append(admission_id)
-                    dataset['structured_summary'].append(structured_summary)
+                    dataset['structured_summary'].append(structured_summary[0])
+                    dataset['structured_summary_dict'].append(structured_summary[1])
                     dataset['summary'].append(summary)
                     dataset['method'].append(method)
                     dataset['domain'].append(standard_domain_mapping[domain])
                     dataset['relevance'].append(0)
                     dataset['groundedness'].append(0)
                     dataset['completeness'].append(0)
-                    dataset['coherence'].append(0)
                     dataset['fluency'].append(0)
 
         return HuggingFaceDataset.from_dict(dataset)
@@ -168,19 +166,19 @@ class HumanEvaluation:
     def admission_to_prompt(self, clinical_notes_series):
         return '\n\n'.join([f'### Clinical note {i+1}\n{note}' for i, note in enumerate(clinical_notes_series.tolist())])
 
-    def get_pruned_extractions_of_admission(self, admission_id: float, pruned_domain_col: str, remove_same_extractions: bool = True):
+    def get_pruned_extractions_of_admission(self, admission_id: float, pruned_domain_col: str, remove_same_extractions: bool = True, dict_format = False):
         """
         Returns the pruned extractions according to a domain of an admission. This assumes that `pruned_domain_col` contains
         the pruned extractions of a clinical note
         """
         def admission_to_prompt(clinical_notes_series):
             clinical_notes = clinical_notes_series.tolist()
-
-            
             note_strings = []
+            note_dicts = []
             for _, note in enumerate(clinical_notes):
                 extraction_set = set([])
                 clinical_note_string = ''
+                concepts = {}
 
                 for concept_id, extraction in note.items():
                     if extraction == 'N/A':
@@ -190,17 +188,21 @@ class HumanEvaluation:
                         continue
 
                     concept_label = self.snomed.get_label_from_id(concept_id)
+                    concepts[f'{concept_label}-{concept_id}'] = extraction
                     clinical_note_string += f'- {concept_label} : {extraction}\n'
+
                     extraction_set.add(extraction.lower().strip())
 
                 if len(clinical_note_string.strip()) > 0:
                     note_strings.append(clinical_note_string)
+                    note_dicts.append(concepts)
+                
             if len(note_strings) == 0:
-                return 'N/A'
+                return 'N/A', str([])
 
             note_strings = list(filter(lambda x: x != '', note_strings))
             note_strings = [f'### Clinical note {i+1}\n{note}' for i, note in enumerate(note_strings)]
-            return '\n\n'.join(note_strings)
+            return '\n\n'.join(note_strings), str(note_dicts)
 
         return self.pruned_dataset.data.groupby('HADM_ID')[pruned_domain_col].aggregate(admission_to_prompt)[admission_id]
 
@@ -236,16 +238,17 @@ class HumanEvaluationFilesGenerator:
 
         def row_to_folder(row):
 
-            excel_path = path + '/' + str(row['domain']) + '/' + str(row['folder_id']) + '.xlsx'
 
+            excel_path = path + '/' + str(row['domain']) + '/' + str(row['folder_id']) + '.xlsx'
             structured_summary = pd.DataFrame({'Structured Summary': [row['structured_summary']]})
             clinical_note = pd.DataFrame({'Clinical Notes': [row['notes']]})
             summary = pd.DataFrame({'Summary': [row['summary']]})
             evaluation = pd.DataFrame({
-                'Criteria': ['Relevance (/5)', 'Groundedness (/5)', 'Completeness (/5)', 'Coherence (/5)', 'Fluency (/5)'],
-                'Score': [0, 0, 0, 0, 0],
-                'Comments': ['', '', '', '', '']
+                'Criteria': ['Relevance (/5)', 'Groundedness (/5)', 'Completeness (/5)', 'Fluency (/5)'],
+                'Score': [0, 0, 0, 0],
+                'Comments': ['', '', '', '']
             })
+
 
             with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
                 # Write dataframes to Excel sheets
@@ -256,36 +259,98 @@ class HumanEvaluationFilesGenerator:
 
                 # Get workbook and worksheet objects for formatting
                 workbook = writer.book
-                
-                # Format for text cells - enable text wrapping, set large font size (20), and set valign
                 text_format = workbook.add_format({
                     'text_wrap': True, 
                     'valign': 'top',
-                    'font_size': 16
+                    'font_size': 20
+                })
+
+                bg_text_format = workbook.add_format({
+                    'text_wrap': True, 
+                    'valign': 'top',
+                    'font_size': 20,
+                    'bold': True,
+                })
+
+                link_text_format = workbook.add_format({
+                    'text_wrap': True, 
+                    'valign': 'top',
+                    'font_size': 20,
+                    'font_color': 'blue',
+                    'underline': 1,
                 })
                 
                 header_format = workbook.add_format({
                     'bold': True, 
                     'border': 1, 
                     'bg_color': '#D9E1F2',
-                    'font_size': 16
+                    'font_size': 20
                 })
                 
                 eval_format = workbook.add_format({
                     'border': 1,
-                    'font_size': 16
+                    'font_size': 20
                 })
+                    
+        
 
+                structured_summary_sheet = writer.sheets['Structured Summary']
+
+                # Write headers for the table
+                structured_summary_sheet.write(0, 0, 'Concept', header_format)
+                structured_summary_sheet.write(0, 1, 'Extraction', header_format)
+
+                # Access the dictionary directly - assuming it's always present and a dictionary
+                structured_summary_dict: Dict[str, str] = ast.literal_eval(row['structured_summary_dict'])
+
+                # Track row index
+                current_row = 1
+
+                # Process all notes
+                for note_index, note in enumerate(structured_summary_dict):
+                    structured_summary_sheet.write(current_row, 0, f'CLINICAL NOTE {note_index + 1}', bg_text_format)
+                    current_row += 2
+                    
+                    for concept_id_str, extraction_text in note.items():
+                        concept_parts = concept_id_str.split('-')
+                        concept_label = concept_parts[0]
+                        concept_id = concept_parts[1] if len(concept_parts) > 1 else ""
+                        
+                        # Create URL for the hyperlink
+                        url = f"https://browser.ihtsdotools.org/?perspective=full&conceptId1={concept_id}&edition=MAIN/2025-04-01&release=&languages=en"
+                        
+                        # Write concept label as a hyperlink
+                        structured_summary_sheet.write_url(
+                            current_row, 0,        # Row, Column
+                            url,                   # URL
+                            string=concept_label,   # Display text
+                            cell_format=link_text_format
+                        )
+                        
+                        # Write extraction text in the adjacent cell
+                        structured_summary_sheet.write(current_row, 1, extraction_text, text_format)
+                        current_row += 1
+                    
+                    current_row += 2
+
+                # If there were no items to write
+                if current_row == 1:
+                    structured_summary_sheet.write(1, 0, 'N/A', text_format)
+                    structured_summary_sheet.write(1, 1, '', text_format)
+                
                 # Format cell sizes
-                summary_sheet = writer.sheets['Structured Summary']
-                summary_sheet.set_column('A:A', 200, text_format) # Make column very wide
-                summary_sheet.set_row(1, 5000)  # Set row height to be tall
+                structured_summary_sheet = writer.sheets['Structured Summary']
+                structured_summary_sheet.set_column('A:A', 50, text_format)
+                structured_summary_sheet.set_column('B:B', 200, text_format)
                 
                 notes_sheet = writer.sheets['Clinical Notes']
+                notes_sheet.write(0, 0, 'Clinical Notes', header_format)
+
                 notes_sheet.set_column('A:A', 200, text_format)
                 notes_sheet.set_row(1, 5000)
                 
                 summary_sheet = writer.sheets['Summary']
+                summary_sheet.write(0, 0, 'Summary', header_format)
                 summary_sheet.set_column('A:A', 200, text_format)
                 summary_sheet.set_row(1, 5000)
                 
