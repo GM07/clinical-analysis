@@ -610,8 +610,7 @@ class VerbalizedExtractionDataset(Dataset):
             output_columns: The output columns to filter the non valid generations from
         """
         for inference_input_column in self.inference_input_columns:
-            assert inference_input_column in self.data.columns, f'The column "{inference_input_column}" is not present in the dataset. This column which corresponds\
-                to the input of the inference pipeline is needed to filter non valid generations'
+            assert inference_input_column in self.data.columns, f'The column "{inference_input_column}" is not present in the dataset. This column which corresponds to the input of the inference pipeline is needed to filter non valid generations. Current columns are {self.data.columns}'
 
         for input_column, output_column in zip(self.inference_input_columns, self.columns):
             mask = self.data[input_column].isna()

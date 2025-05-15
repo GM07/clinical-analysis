@@ -108,7 +108,7 @@ class PrunedConceptPromptGenerator(PromptGenerator):
 
     def generate_prompts(self,):
         """
-        Generate prompts for the BHC pipeline
+        Generate prompts for pruned concepts pipeline
         """
         self.dataset = self.dataset[self.dataset['CATEGORY'] != 'Discharge summary']
 
