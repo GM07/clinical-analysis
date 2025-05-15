@@ -101,7 +101,7 @@ class OntologyPrompter:
                 final_answers.append(answer.strip())
         return final_answers
 
-    def create_prompts(self, clinical_note, concept_ids: List[str]):
+    def create_prompts(self, clinical_note: str, concept_ids: List[str]):
         """
         Creates prompts using a clinical note and concept ids before sending it to the model.
 
@@ -120,7 +120,7 @@ class OntologyPrompter:
                 'label': label,
                 'properties': properties
             })
-
+            
             prompts.append(prompt)
         return prompts
 
@@ -140,7 +140,7 @@ class OntologyPrompter:
             return ''
         else:
             current_property_knowledge = '\n- '.join(map(lambda x: x.get_value(), restriction_properties))
-            property_sentence = '' if len(current_property_knowledge.strip()) == 0 else f'{concept_label} is characterized by : \n- {current_property_knowledge}\n'
+            property_sentence = '' if len(current_property_knowledge.strip()) == 0 else f'\n{concept_label} is characterized by : \n- {current_property_knowledge}\n'
             return property_sentence
 
     @staticmethod

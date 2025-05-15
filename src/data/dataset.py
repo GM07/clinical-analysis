@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import random
@@ -144,11 +145,11 @@ class Dataset:
                     for res, column_name in zip(result_val, column_names):
                         if preprocess:
                             res = preprocess(res)
-                        initial_dataset[column_name].iloc[partition.start + i] = res
+                        initial_dataset[column_name].iloc[partition.start + i] = json.dumps(res)
                 else:
                     if preprocess:
                         result_val = preprocess(result_val)
-                    initial_dataset[column_names[0]].iloc[partition.start + i] = result_val
+                    initial_dataset[column_names[0]].iloc[partition.start + i] = json.dumps(result_val)
         
         initial_dataset = initial_dataset.loc[:, ~initial_dataset.columns.str.contains('^Unnamed')]
         initial_dataset.to_csv(output_file_path, index=False)

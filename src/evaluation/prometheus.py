@@ -1,6 +1,6 @@
 import re
 import itertools
-from typing import List
+from typing import List, Tuple
 import re
 
 import matplotlib.pyplot as plt
@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 from src.data.dataset import Dataset
 from src.data.dataset import Dataset, ComparisonExtractionDataset
+from src.generation.ontology_prompter import OntologyPrompter
 from src.generation.templates import BASE_PROMPT_TEMPLATE
 from src.models.prometheus import Prometheus
 from src.ontology.snomed import Snomed
@@ -37,23 +38,24 @@ class PrometheusPromptGenerator:
         """Loads the ontology"""
         self.snomed = Snomed(self.snomed_path, self.snomed_cache_path, nb_classes=366771)
 
-    def get_model_prompt(self, clinical_note, ontology_concept):
+    def get_model_prompt(self, clinical_note, concept_id):
         """Reproduces the prompt used in the extraction step with a clinical note and an ontology concept"""
-        return BASE_PROMPT_TEMPLATE.format(clinical_note=clinical_note, label=ontology_concept)
+        prompter = OntologyPrompter(snomed=self.snomed, constrained_model=None)
+        return prompter.create_prompts(clinical_note=clinical_note, concept_ids=[concept_id])[0]
 
-    def get_prometheus_prompt(self, clinical_note: str, ontology_concept: str, response_a: str, response_b: str, rubric: str):
+    def get_prometheus_prompt(self, clinical_note: str, concept_id: str, response_a: str, response_b: str, rubric: str):
         """
         Returns the prompt used by prometheus to evaluate the responses
         
         Args:
             clinical_note: Clinical note used in the extraction step
-            ontology_concept: Ontology concept used in the extraction step
+            concept_id: Ontology concept id used in the extraction step
             response_a: Response of model A
             response_b: Response of model B
             rubric: Rubric used to evaluate the responses
         """
         return Prometheus.create_prompt(
-            instruction=self.get_model_prompt(clinical_note, ontology_concept),
+            instruction=self.get_model_prompt(clinical_note, concept_id),
             response_a=response_a,
             response_b=response_b,
             rubric_type=rubric
@@ -63,7 +65,7 @@ class PrometheusPromptGenerator:
         self, 
         extraction_dataset: ComparisonExtractionDataset, 
         rubric: str,
-        output_file_path: str,
+        output_file_path: str | None = None,
     ):
         """
         Will generate a dataset of all combination of answers of extracted dataset
@@ -80,7 +82,6 @@ class PrometheusPromptGenerator:
         combinations = list(itertools.permutations(result_columns, r=2))
         results = extraction_dataset.data
 
-
         prompts = []
         for combination in combinations:
             for i, row in results.iterrows():
@@ -90,29 +91,88 @@ class PrometheusPromptGenerator:
                 if type(row[combination[0]]) == float or type(row[combination[1]]) == float:
                     continue
 
-                a_results = row[combination[0]] # ast.literal_eval(row[combination[0]])[0]
-                b_results = row[combination[1]] # ast.literal_eval(row[combination[1]])[0]
+                a_results = row[combination[0]]
+                b_results = row[combination[1]]
 
                 assert len(a_results) == len(b_results), f'The number of retrieved concepts between A {len(a_results)} is different from B ({len(b_results)})'
                 for (a_concept, a_result), (b_concept, b_result) in zip(a_results.items(), b_results.items()):
                     assert a_concept == b_concept, f'Found different concepts between the results {a_concept} vs {b_concept} at row {clinical_note_id}'
+                    if len(a_concept) == 0:
+                        continue
+
                     concept_label = self.snomed.get_label_from_id(a_concept)
-                    prompt = self.get_prometheus_prompt(clinical_note, concept_label, a_result, b_result, rubric)
+                    prompt = self.get_prometheus_prompt(clinical_note, a_concept, a_result, b_result, rubric)
                     prompts.append((clinical_note_id, combination[0], combination[1], clinical_note, concept_label, a_result, b_result, prompt))
                     
-        prompts = pd.DataFrame(prompts, columns=[
-            clinical_note_id_column,
-            'a',
-            'b',
-            clinical_note_column,
-            'concept',
-            'a_result',
-            'b_result',
-            'prompt'])
+        prompts = pd.DataFrame(prompts, columns=[clinical_note_id_column, 'a', 'b', clinical_note_column, 'concept', 'a_result', 'b_result', 'prompt'])
         
-        prompts.to_csv(output_file_path, index=False)
+        if output_file_path:
+            prompts.to_csv(output_file_path, index=False)
         return prompts
 
+    def generate_prompts_mixed_results(
+        self, 
+        first: ComparisonExtractionDataset, 
+        second: ComparisonExtractionDataset,
+        methods_to_compare: List[Tuple[str, str]],
+        rubric: str,
+        dataset_names: Tuple[str, str],
+        output_file_path: str | None = None,
+    ):
+        """
+        Same as `generate_prompts`, but can be used to compare generations from multiple datasets (for example, if we want to compare the constrained method of model A vs beam of model B)
+        """
+        clinical_note_column = ComparisonExtractionDataset.CLINICAL_NOTE_COLUMN
+        clinical_note_id_column = ComparisonExtractionDataset.CLINICAL_NOTE_ID_COLUMN
+        for method_a, method_b in methods_to_compare:
+            assert method_a in ComparisonExtractionDataset.RESULT_COLUMNS, f'Method {method_a} is not a valid comparison extraction dataset column'
+            assert method_b in ComparisonExtractionDataset.RESULT_COLUMNS, f'Method {method_b} is not a valid comparison extraction dataset column'
+
+        results_a = first.data
+        results_b = second.data
+
+        assert len(results_a) == len(results_b), f'The size of dataset A ({len(results_a)}) must be equal to the size of dataset B ({len(results_b)})'
+
+        prompts = []
+        for no_permutation in methods_to_compare:
+            combinations = [(no_permutation[0], no_permutation[1]), (no_permutation[1], no_permutation[0])]
+            names_permutted = [(dataset_names[0], dataset_names[1]), (dataset_names[1], dataset_names[0])]
+            for names, combination in zip(names_permutted, combinations): # We compare both (a vs b) and (b vs a), because of prometheus' consistency problem
+                for i in range(len(results_a)):
+                    
+                    row_a = results_a.iloc[i]
+                    row_b = results_b.iloc[i]
+
+                    clinical_note = row_a[clinical_note_column]
+                    clinical_note_id_a = row_a[clinical_note_id_column]
+                    clinical_note_id_b = row_b[clinical_note_id_column]
+
+                    assert clinical_note_id_a == clinical_note_id_b, f'Mismatch between the rows of A and B: Found row in A with id {clinical_note_id_a} and row in B with id {clinical_note_id_b} for index {i}. Row ids must be the same for all samples'
+
+                    if type(row_a[combination[0]]) == float or type(row_b[combination[1]]) == float:
+                        continue
+
+                    a_results = row_a[combination[0]]
+                    b_results = row_b[combination[1]]
+
+                    concepts_a = set(a_results.keys())
+                    concepts_b = set(b_results.keys())
+                    for concept_id in concepts_a.intersection(concepts_b):
+                        a_result = a_results[concept_id]
+                        b_result = b_results[concept_id]
+
+                        if len(concept_id) == 0:
+                            continue
+
+                        concept_label = self.snomed.get_label_from_id(concept_id)
+                        prompt = self.get_prometheus_prompt(clinical_note, concept_id, a_result, b_result, rubric)
+                        prompts.append((clinical_note_id_a,  f'{names[0]}_{combination[0]}', f'{names[1]}_{combination[1]}', clinical_note, concept_label, a_result, b_result, prompt))
+                        
+        prompts = pd.DataFrame(prompts, columns=[clinical_note_id_column, 'a', 'b', clinical_note_column, 'concept', 'a_result', 'b_result', 'prompt'])
+
+        if output_file_path:
+            prompts.to_csv(output_file_path, index=False)
+        return prompts
 
 class PrometheusResultDataset(Dataset):
     """

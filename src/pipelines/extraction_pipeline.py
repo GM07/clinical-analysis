@@ -123,7 +123,7 @@ class ExtractionPipeline(Pipeline):
             clinical_notes=clinical_notes,
             top_n=extraction_config.nb_concepts,
             generation_config=generation_config,
-            return_dataset=extraction_config.return_internal_dataset or extraction_config.save_internal_dataset
+            return_dataset=extraction_config.return_internal_dataset or extraction_config.save_internal_dataset,
         )
 
         if extraction_config.save_internal_dataset:

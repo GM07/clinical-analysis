@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 import logging
 
 from src.data.dataset import Dataset, DatasetPartition
-from src.pipelines.extraction_pipeline import DatasetComparisonExtractionPipeline, ExtractionPipelineConfig
+from src.pipelines.extraction_pipeline import DatasetComparisonExtractionPipeline, ComparisonExtractionPipelineConfig
 
 from datasets import Dataset as HuggingFaceDataset
 
@@ -21,6 +21,7 @@ parser.add_argument('--snomed', type=str, help='Path to snomed ontology file (.o
 parser.add_argument('--snomed_cache', type=str, help='Path to snomed cache file')
 parser.add_argument('--medcat', type=str, help='Path to medcat annotator checkpoint')
 parser.add_argument('--nb_concepts', type=int, default=5, help='Number of concepts to extract')
+parser.add_argument('--batch_size', type=int, default=5, help='Number of concepts to extract')
 
 def main():
 
@@ -39,11 +40,10 @@ def main():
         medcat_device='cuda'
     )
 
-
-    extraction_config = ExtractionPipelineConfig(nb_concepts=args.nb_concepts)
+    extraction_config = ComparisonExtractionPipelineConfig(nb_concepts=args.nb_concepts, batch_size=args.batch_size)
 
     print('Extracting dataset')
-    output_dataset = pipeline(dataset, extraction_config)
+    output_dataset = pipeline(dataset, extraction_config=extraction_config)
     
     print('Saving dataset to : ', args.output_path)
     output_dataset.to_csv(args.output_path)

@@ -23,7 +23,7 @@ class DatasetInferencePipeline:
         dataset: HuggingFaceDataset, 
         input_column: str = 'input', 
         output_column: str = 'output',
-        max_new_tokens: int = 256, 
+        max_new_tokens: int = 512, 
         max_rows_to_process: int = None,
         apply_chat_template: bool = True, 
         rows_to_chat: Callable = None,
@@ -184,9 +184,7 @@ class DatasetInferencePipeline:
                     if system_prompt is not None:
                         chat.insert(0, {'role': 'system', 'content': system_prompt})
                  else:
-                    # Assume it's already in a format close to chat (e.g., list of messages)
-                    logger.warning(f"Input for templating is not a string: {type(inputs)}. Assuming it's already in chat message list format.")
-                    chat = inputs # Or apply transformation if needed
+                    chat = inputs 
 
                  output.append(self.apply_chat_template(chat))
             return {output_column: output}

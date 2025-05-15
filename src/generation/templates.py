@@ -2,7 +2,9 @@ BASE_PROMPT_TEMPLATE="""Here is a clinical note about a patient:
 -------------------
 {clinical_note}
 -------------------
-In a short sentence, extract the information that is related to the "{label}" medical concept from the clinical note. If the concept is not mentioned in the note, respond with 'N/A'. Only output the extracted information.
+Extract the information that is related to the "{label}" medical concept from the clinical note. 
+{properties}
+If the concept is not mentioned in the note, respond with 'N/A'. Only output the extracted information.
 """
 
 BHC_BASE_TEMPLATE="""
@@ -18,7 +20,7 @@ Here are multiple clinical notes associated to the hospital course of a patient 
 
 {clinical_notes}
 
-Summarize the hospital course of the patient only using the information related to the "{domain}" medical domain in a text. Only output the summary without any additional text. If you don't have any information about the concept, respond with 'N/A'.
+Summarize the hospital course of the patient only using the information related to the "{domain}" medical domain in a text. Only output the summary without any additional text.
 """
 
 PRUNED_CONCEPT_TEMPLATE="""
@@ -26,7 +28,7 @@ Sentences were extracted from multiple clinical notes based on a medical concept
 
 {clinical_notes}
 
-Summarize the clinical notes of the patient based on the extractions of each clinical note in a text. Only output the summary without any additional text. If you don't have any information about the concept, respond with 'N/A'.
+Summarize the clinical notes of the patient based on the extractions of each clinical note in a text. Only output the summary without any additional text.
 """
 
 

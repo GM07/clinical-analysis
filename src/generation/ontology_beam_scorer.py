@@ -49,7 +49,7 @@ class GenerationConfig:
     score_weights: Tuple[float, float] = (0.5, 0.5)
 
     # Corresponds to H_bf, P_bf and G_bf
-    score_boost_factors: List[float] = field(default_factory=lambda: [3.0, 1.0, 10.0])
+    score_boost_factors: List[float] = field(default_factory=lambda: [1.0, 1.0, 0.01])
 
     # The exclude_ids list contains classes that are not entirely linked to concepts
     # but more like values or environments. This is usually what is present in the 
@@ -84,7 +84,7 @@ class GenerationConfig:
         return instance
 
     @classmethod
-    def ontology_beam_search(cls, batch_size: int = 1, h_score: float = 3, p_score: float = 1, s_score: float = 10, use_rouge_for_restrictions: bool = True):
+    def ontology_beam_search(cls, batch_size: int = 1, h_score: float = 1, p_score: float = 1, s_score: float = 0.01, use_rouge_for_restrictions: bool = True):
         """
         Returns an instance of this class leading to ontology-based beam search
         """

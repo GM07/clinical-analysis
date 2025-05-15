@@ -337,7 +337,10 @@ class Snomed:
             return SClass(self.__get_class_from_id(id))
         else:
             if id not in self.id_to_classes:
-                return SClass(self.__get_class_from_id(id))
+                try:
+                    return SClass(self.__get_class_from_id(id))
+                except Exception as e:
+                    raise Exception(f'Cannot find concept of id', id)
             return self.id_to_classes[id]
 
     def get_label_from_id(self, id: str, refetch=False) -> str:

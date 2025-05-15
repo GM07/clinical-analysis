@@ -33,7 +33,7 @@ def main():
         output_file_path=args.out,
         column_names=column_names,
         original_dataset_path=args.original,
-        preprocess=dict_to_list if args.preprocess == 'dict_to_list' else 'none',
+        preprocess=dict_to_list if args.preprocess == 'dict_to_list' else None,
     )
 
 if __name__ == '__main__':
