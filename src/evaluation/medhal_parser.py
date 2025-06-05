@@ -28,18 +28,18 @@ class MedHalParser:
         'sumpubmed': 'Summarization'
     }
 
-    def __init__(self, dataset_path, ) -> None:
-        self.dataset_path = dataset_path
+    def __init__(self) -> None:
         self.rouge_scorer = RougeScorer(['rouge1', 'rouge2'], use_stemmer=True)
-        self.load()
         
-    def load(self):
-        self.data = Dataset.from_csv(self.dataset_path)
-        # self.data = self.data.filter(lambda x: x['source'] != 'acm')
+    def load(self, dataset: str | Dataset):
+        if isinstance(dataset, str):
+            return Dataset.from_csv(dataset)
+        else:
+            return dataset
 
-    def evaluate(self, add_prompt: bool, output_col: str = 'OUTPUT', prompt_col: str = 'text'):
-
-        self.data = self.data.map(
+    def parse(self, dataset: str | Dataset, add_prompt: bool, output_col: str = 'OUTPUT', prompt_col: str = 'text'):
+        data = self.load(dataset)
+        data = data.map(
             self._get_prediction, 
             fn_kwargs={
                 'add_prompt': add_prompt,
@@ -48,13 +48,26 @@ class MedHalParser:
             },
             desc='Parsing answers'
         )
+        return data       
 
-        print(len(self.data))
+    def evaluate(self, dataset: str | Dataset, add_prompt: bool, output_col: str = 'OUTPUT', prompt_col: str = 'text'):
+        data = self.load(dataset)
+        data = data.map(
+            self._get_prediction, 
+            fn_kwargs={
+                'add_prompt': add_prompt,
+                'output_col': output_col,
+                'prompt_col': prompt_col,
+            },
+            desc='Parsing answers',
+        )
 
-        filtered = self.data.filter(lambda x: x['valid'], desc='Filtering invalid samples')
-        print('Filtered : ', len(filtered))
-        invalid = self.data.filter(lambda x: not x['valid'], desc='Retrieving invalid samples')
-        print('Filtered : ', len(invalid))
+        print('Total data size : ', len(data))
+
+        filtered = data.filter(lambda x: x['valid'], desc='Filtering invalid samples')
+        print('Filtered size : ', len(filtered))
+        invalid = data.filter(lambda x: not x['valid'], desc='Retrieving invalid samples')
+        print('Invalid size : ', len(invalid))
 
         y_pred = filtered['prediction']
         y_test = filtered['label']
@@ -83,6 +96,7 @@ class MedHalParser:
             'bleu': np.mean(bleu),
             # 'bert': np.mean(bert_score).item(),
             'invalid': invalid,
+            'valid': filtered,
             'valid_explanation': valid_explanation,
         }
 
@@ -91,10 +105,18 @@ class MedHalParser:
         return plot_category_prediction_accuracy(per_task, category_column='source')
 
     def _get_prediction(self, row, add_prompt: bool, output_col: str, prompt_col: str):
+        if row[output_col] is None:
+            return {
+                'valid': False,
+                'prediction': False,
+                'explanation_gen': ''
+            }
+                    
         if add_prompt:
             output = row[prompt_col] + row[output_col]
         else:
             output = row[output_col]
+        
         if not output:
             return {
                 'valid': False,
@@ -110,7 +132,7 @@ class MedHalParser:
             explanation_gen = output if len(matches_exp) == 0 else matches_exp[0]
             return {
                 'valid': True,
-                'prediction': matches[0].lower() == 'yes',
+                'prediction': matches[0].strip().lower() == 'yes',
                 'explanation_gen': explanation_gen.strip()
             }
 
@@ -162,28 +184,26 @@ class MedHalParser:
 
 
     @staticmethod
-    def plot_model_comparison_accuracy(paths: list, model_names: list, category_column: str = 'source'):
+    def plot_model_comparison_accuracy(paths: list, model_names: list, add_prompts: list, category_column: str = 'source'):
         """
         Plots the accuracy score of multiple models across all categories with lines connecting dots.
 
         Args:
             paths (list): List of paths to the dataset results for each model.
             model_names (list): List of model names corresponding to the paths.
+            add_prompts: List of boolean variables indicating whether for each path, the prompt must be added
             category_column (str): The column in the dataset that represents the category.
         """
-        if len(paths) != len(model_names):
-            raise ValueError("The number of paths and model names must be the same.")
+        if len(paths) != len(model_names) and len(add_prompts) != len(paths):
+            raise ValueError("The number of paths, model names and add_prompts variables must be the same.")
 
         accuracies = {}
         all_categories = set()
 
-        for path, model_name in zip(paths, model_names):
-            evaluator = MedHalParser(path)
-            if 'ours' in path:
-                results = evaluator.evaluate(add_prompt=True, output_col='output')
-            else:
-                results = evaluator.evaluate(add_prompt=False)
-
+        for path, model_name, add_prompt in zip(paths, model_names, add_prompts):
+            evaluator = MedHalParser()
+            results = evaluator.evaluate(dataset=path, add_prompt=add_prompt, output_col='output')
+            print(results)
             df = results['valid'].to_pandas()
 
             def map_categories(category):

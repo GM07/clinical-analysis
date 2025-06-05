@@ -25,10 +25,15 @@ class MedNLIEvaluator:
 
         self.load()
 
-    def load(self):
-
+    def load_dataset(self):
         self.dataset = HuggingFaceDataset.from_json(self.data_path)
+
+    def load_model(self):
         self.pipeline = ModelDatasetInferencePipeline(self.model_path, self.tokenizer_path)
+
+    def load(self):
+        self.load_dataset()
+        self.load_model()
 
     def __call__(
         self, 

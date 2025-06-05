@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 
 class EvaluatorTrainer:
 
-    DEFAULT_ID2LABEL = {0: 'Nursing', 1: 'ECG', 2: 'Radiology'}
-    DEFAULT_LABEL2ID = {'Nursing': 0, 'ECG': 1, 'Radiology': 2}
+    DEFAULT_ID2LABEL = {0: 'Nursing/other', 1: 'ECG', 2: 'Radiology', 3: 'Physician '}
+    DEFAULT_LABEL2ID = {'Nursing/other': 0, 'ECG': 1, 'Radiology': 2, 'Physician ': 3}
 
     def __init__(self, model_checkpoint: str, dataset_dict_path: str, label2id: dict = None, id2label: dict = None, local: bool = False):
         """
@@ -117,19 +117,20 @@ class EvaluatorTrainer:
 
     
     @staticmethod
-    def prepare_dataset(self, path: str, output_path: str, label2id: dict):
+    def prepare_dataset(dataset: str | Dataset, output_path: str, label2id: dict):
         """
         Prepares the dataset for training and evaluation by converting it to a Huggingface DatasetDict object, adding labels and splitting it into train and test sets.
 
         Args:
-            path (str): The path to the dataset.
-            output_path (str): The path to save the prepared dataset.
-            label2id (dict): A dictionary mapping labels to their corresponding IDs.
+            dataset : The path to the dataset or the huggingface dataset.
+            output_path : The path to save the prepared dataset.
+            label2id : A dictionary mapping labels to their corresponding IDs.
 
         Returns:
             dataset_dict (DatasetDict): A DatasetDict object containing the train and test sets.
         """
-        dataset = Dataset.from_csv(path)
+        if isinstance(dataset, str):
+            dataset = Dataset.from_csv(dataset)
 
         def get_labels(row):
             return {'label': label2id[row['CATEGORY']]}

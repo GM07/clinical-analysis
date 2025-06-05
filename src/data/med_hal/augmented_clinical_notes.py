@@ -4,7 +4,7 @@ import random
 import os
 import re
 import time
-from datasets import load_dataset, load_from_disk
+from datasets import load_dataset, load_from_disk, Dataset
 from tqdm import tqdm
 from src.data.synthetic_dataset import SyntheticDataset
 from src.utils import valid_json
@@ -58,6 +58,7 @@ ALL_CONCEPTS = {
     'Time',
     'Details',
     'Name',
+    'Name of Symptom',
     'Related condition',
     'Dosage',
     'Time',
@@ -213,6 +214,10 @@ concept_one_shot_input = {
         {'category': 'treatments',
          'value': 'Olanzapine tablets',
          'concept_reference': 'Olanzapine tablets'},
+    'name of symptom':
+        {'category': 'symptoms',
+         'value': 'Pain in chest',
+         'concept_reference': 'None'},
     'nutrition': 
         {'category': 'patient medical history',
          'value': 'Mostly consumed liquids and soft consistency meals during the time of dysphagia deterioration at the age of nineteen',
@@ -269,7 +274,8 @@ concept_one_shot_examples = {
     'nutrition': ' The patient primarily consumed liquids and soft consistency meals during their period of dysphagia deterioration at age nineteen.',
     'care center details': 'The patient was admitted to the Rheumatology clinic.',
     'occupation': 'The patient works in allied health care.',
-    'reason': 'The patient was admitted due to idiopathic osteonecrosis of the femoral head.'
+    'reason': 'The patient was admitted due to idiopathic osteonecrosis of the femoral head.',
+    'name of symptom': 'The patient reported chest pain.',
 }
 
 system_prompt = """You are tasked with transforming structured medical data into natural language statements about a patient. Each input will contain 4 elements:
@@ -408,10 +414,13 @@ class AugmentedClinicalNotes(SyntheticDataset):
         self.dataset_name = os.path.basename(self.dataset_path)
         self.dataset_folder_path = self.dataset_path.replace(self.dataset_name, '')
 
-        self.data = load_from_disk(
-            self.dataset_path,
-            # trust_remote_code=True,
-        )['train']
+        if self.dataset_path.endswith('.jsonl'):
+            self.data = Dataset.from_json(self.dataset_path)
+        else:
+            self.data = load_from_disk(
+                self.dataset_path,
+                # trust_remote_code=True,
+            )['train']
 
         logger.info(f"Loaded {len(self.data)} samples from {self.dataset_path} with columns : {self.data.column_names}")
 
@@ -489,7 +498,7 @@ class AugmentedClinicalNotes(SyntheticDataset):
         self.data = self.data.map(
             self._generate_negative_samples_from_row, 
             batched=True, 
-            batch_size=1, 
+            batch_size=100, 
             desc="Generating negative samples"
             # with_indices=True
         )
@@ -717,26 +726,58 @@ class AugmentedClinicalNotes(SyntheticDataset):
 
         This function should always be called with batched=True and batch_size=1
         """
-        category, concept, value, concept_reference = row['category'][0], row['concept'][0], row['value'][0], row['concept_reference'][0]
-        sampled_value = self._sample_random_value_from_concept(concept, value)
 
-        prompt = f"concept : {concept}\ncategory : {category}\nvalue : {sampled_value}\nconcept_reference : {concept_reference}"
-        chat = self.one_shot_chats_per_concept[concept] + [{'role': 'user', 'content': prompt}]
+        final_dicts = defaultdict(list)
 
-        positive_sample = row | {'corrupted_value': [None]}
-        negative_sample = row | {
-            'chat': [chat], 
-            'factual': [False], 
-            'corrupted_value': [sampled_value],
-            'system_prompt': [chat[0]['content']],
-            'one_shot_user_input': [chat[1]['content']],
-            'one_shot_assistant_output': [chat[2]['content']],
-            'user_input': [prompt],
-        }
+        # Positive sample
+        for k, v in row.items():
+            for val in v:
+                final_dicts[k].append(val)
+        for i in range(len(row['category'])):
+            final_dicts['corrupted_value'].append(None)
+
+        other_keys = set(row.keys())
+        for key in ['chat', 'factual', 'corrupted_value', 'system_prompt', 'one_shot_user_input', 'one_shot_assistant_output', 'user_input']:
+            other_keys.discard(key)
+
+        # Negative sample
+        for i in range(len(row['category'])):
+
+            category, concept, value, concept_reference = row['category'][i], row['concept'][i], row['value'][i], row['concept_reference'][i]
+            sampled_value = self._sample_random_value_from_concept(concept, value)
+
+            prompt = f"concept : {concept}\ncategory : {category}\nvalue : {sampled_value}\nconcept_reference : {concept_reference}"
+            chat = self.one_shot_chats_per_concept[concept] + [{'role': 'user', 'content': prompt}]
+            final_dicts['chat'].append(chat)
+            final_dicts['factual'].append(False)
+            final_dicts['corrupted_value'].append(sampled_value)
+            final_dicts['system_prompt'].append(chat[0]['content'])
+            final_dicts['one_shot_user_input'].append(chat[1]['content'])
+            final_dicts['one_shot_assistant_output'].append(chat[2]['content'])
+            final_dicts['user_input'].append(prompt)
+
+            for k in other_keys:
+                final_dicts[k].append(row[k][i])
+
+            # positive_sample = row | {'corrupted_value': [None]}
+            # negative_sample = row | {
+            #     'chat': [chat], 
+            #     'factual': [False], 
+            #     'corrupted_value': [sampled_value],
+            #     'system_prompt': [chat[0]['content']],
+            #     'one_shot_user_input': [chat[1]['content']],
+            #     'one_shot_assistant_output': [chat[2]['content']],
+            #     'user_input': [prompt],
+            # }
+            
+            # final_dicts.append(positive_sample)
+            # final_dicts.append(negative_sample)
         
-        dicts = [positive_sample, negative_sample]
-        result = self._list_of_dicts_to_dict(dicts)
-        return result
+        # result = self._list_of_dicts_to_dict(final_dicts)
+        # for k, v in final_dicts.items():
+            # print(f'{k} : {len(v)}')
+
+        return final_dicts
 
     def _sample_random_value_from_concept(self, concept, value):
         """
@@ -814,3 +855,29 @@ class AugmentedClinicalNotes(SyntheticDataset):
 
     def __iter__(self):
         return iter(self.data)
+
+
+class AugmentedClinicalNotesValidator:
+
+    PROMPT_TEMPLATE = """You must evaluate whether an extraction a clinical note is factual or not. If it is factual, answer with YES. If it is not factual, answer with NO. \nHere is the clinical note : {clinical_note}\nHere is the extraction : {extraction}\n\nOnly answer with YES or NO. Do not generate any other explanation."""
+
+    def __init__(self, processed_path: str):
+        self.processed_path = processed_path
+
+        self.load()
+
+    def load(self):
+
+        if self.processed_path.endswith('.csv'):
+            self.dataset = Dataset.from_csv(self.processed_path)
+        else:
+            self.dataset = load_from_disk(self.processed_path)
+
+    def generate_validation_prompts(self):
+
+
+        def generate(x):
+            return {'prompt': [self.PROMPT_TEMPLATE.format(clinical_note=note, extraction=out) for note, out in zip(x['full_note'], x['output'])]}
+
+        columns = ['chat', 'system_prompt', 'one_shot_user_input', 'one_shot_assistant_output', 'user_input']
+        return self.dataset.map(generate, remove_columns=columns, batched=True)

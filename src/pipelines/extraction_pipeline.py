@@ -6,8 +6,9 @@ from datasets import Dataset as HuggingFaceDataset
 
 from src.data.dataset import DatasetPartition
 from src.generation.guided_ontology_prompter import GuidedOntologyPrompter
-from src.generation.ontology_constrained_model import OntologyConstrainedModel
+from src.generation.ontology_constrained_model import OntologyConstrainedModel, OntologyPromptTemplate
 from src.generation.ontology_beam_scorer import GenerationConfig
+from src.generation.templates import BASE_PROMPT_TEMPLATE
 from src.ontology.medcat_annotator import MedCatAnnotator
 from src.ontology.snomed import Snomed
 from src.pipelines.pipeline import Pipeline
@@ -38,7 +39,6 @@ Types of extraction pipelines based on the input type :
 - DatasetExtractionPipeline, DatasetComparisonExtractionPipeline : These expect a huggingface dataset and will process all clinical notes in the dataset. Clinical notes are expected in the column TEXT and Result will be added to a column OUTPUT
 - PartitionedExtractionPipeline, PartitionedComparisonExtractionPipeline : These expect a dataset partition (see DatasetPartition)
 """
-
 
 class ExtractionPipeline(Pipeline):
     """
@@ -116,7 +116,7 @@ class ExtractionPipeline(Pipeline):
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
-            system_prompt=self.system_prompt
+            system_prompt=self.system_prompt,
         )
 
         results = prompter(
@@ -159,11 +159,12 @@ class DatasetExtractionPipeline(ExtractionPipeline):
             extraction_config: Configuration for the extraction
         """
 
+
         prompter = GuidedOntologyPrompter(
             constrained_model=self.ontology_constrained_model,
             snomed=self.snomed,
             annotator=self.medcat,
-            system_prompt=self.system_prompt
+            system_prompt=self.system_prompt,
         )
 
         results = prompter(
@@ -259,7 +260,7 @@ class ComparisonExtractionPipeline(ExtractionPipeline):
         # TODO : Support for saving internal dataset
         normal_config = GenerationConfig.greedy_search(batch_size=extraction_config.batch_size)
         beam_config = GenerationConfig.beam_search(batch_size=extraction_config.batch_size)
-        constrained_config = GenerationConfig.ontology_beam_search(batch_size=extraction_config.batch_size)
+        constrained_config = GenerationConfig.ontology_beam_search(batch_size=extraction_config.batch_size, h_score=1.0, p_score=1.0, s_score=0.1)
 
         normal_attr_by_id = prompter(
             clinical_notes=clinical_notes,

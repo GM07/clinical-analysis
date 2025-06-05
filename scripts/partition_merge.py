@@ -15,7 +15,7 @@ parser.add_argument('--partition_folder', type=str, required=True, help='Path to
 parser.add_argument('--out', type=str, required=True, help='Path to output file')
 parser.add_argument('--results', type=str, required=True, help='Name of columns in csv file for the results per sample. Must be a string of comma-separated names')
 parser.add_argument('--original', type=str, required=False, default=None, help='Path to original dataset')
-parser.add_argument('--preprocess', type=str, required=False, default='none', help='Path to original dataset (dict_to_list or none)')
+parser.add_argument('--preprocess', type=str, required=False, default='none', help='Preprocessing function (dict_to_list or none)')
 
 def dict_to_list(d: dict):
     return [(k, v) for k, v in d.items()]

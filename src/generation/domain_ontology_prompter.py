@@ -24,6 +24,8 @@ class DomainOntologyPrompter(OntologyPrompter):
     """
 
     # v2.0 : Supports note batching
+    def __init__(self, snomed: Snomed, constrained_model: OntologyConstrainedModel, annotator: Annotator = None, template: OntologyPromptTemplate = OntologyPromptTemplate(), system_prompt: str = None, log_path: str = None):
+        super().__init__(snomed, constrained_model, annotator, template, system_prompt, log_path)
 
     def __init__(
         self, 

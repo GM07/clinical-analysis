@@ -274,6 +274,11 @@ def main():
         # TODO : What happens if the tokenizer is in a different folder, thus has the pad token id, but the model does not have the same length
         model.resize_token_embeddings(len(tokenizer)) 
         logger.warning(f"Pad token added")
+    elif tokenizer.pad_token_id == tokenizer.eos_token_id:
+        logger.warning("Pad token and eos token are the same, setting pad token to <finetune-pad-token>")
+        tokenizer.add_special_tokens({'pad_token': '<finetune-pad-token>'})
+        model.resize_token_embeddings(len(tokenizer)) 
+        logger.warning(f"Pad token added")
     else:
         logger.info(f'Pad token is {tokenizer.pad_token}')
 

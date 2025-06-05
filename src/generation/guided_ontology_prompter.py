@@ -7,7 +7,10 @@ from datasets import Dataset
 
 from src.domain_adaptation.domain_class_frequency import DomainClassFrequency
 from src.generation.ontology_beam_scorer import GenerationConfig
+from src.generation.ontology_constrained_model import OntologyConstrainedModel, OntologyPromptTemplate
 from src.generation.ontology_prompter import OntologyPrompter
+from src.ontology.annotator import Annotator
+from src.ontology.snomed import Snomed
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +20,9 @@ class GuidedOntologyPrompter(OntologyPrompter):
     the most frequent concepts detected by the annotator in the clinical note. When prompted, the model can 
     be guided through an ontology-constrained decoding process.
     """
+
+    def __init__(self, snomed: Snomed, constrained_model: OntologyConstrainedModel, annotator: Annotator = None, template: OntologyPromptTemplate = OntologyPromptTemplate(), system_prompt: str = None, log_path: str = None):
+        super().__init__(snomed, constrained_model, annotator, template, system_prompt, log_path)
 
     def __call__(self, clinical_notes: List[str], top_n: int = 5, generation_config: GenerationConfig = GenerationConfig(), return_dataset: bool = False, dataset_cache: Dataset = None):
         """
@@ -31,7 +37,7 @@ class GuidedOntologyPrompter(OntologyPrompter):
 
         Returns:
         List of prompts per clinical notes
-        """        
+        """  
         if dataset_cache is not None:
             logger.info(f'Using dataset cache of {len(dataset_cache)} rows')
             dataset = dataset_cache

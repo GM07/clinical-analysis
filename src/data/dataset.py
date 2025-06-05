@@ -1,3 +1,4 @@
+from collections import defaultdict
 import json
 import logging
 import os
@@ -282,7 +283,7 @@ class DatasetPartition:
         return self.data.iloc[self.start + i]
 
     @classmethod
-    def from_save(self, path: str, load_original_dataset: bool = True):
+    def from_save(self, path: str, load_original_dataset: bool = True, original_dataset_path: str | None = None):
         """
         Loads a partition from a file
 
@@ -291,6 +292,8 @@ class DatasetPartition:
             load_original_dataset: Whether to load the original dataset with the partition
         """
         partition: DatasetPartition = joblib.load(path)
+        if original_dataset_path:
+            partition.original_dataset_path = original_dataset_path
         partition.saving_path = path
         if load_original_dataset:
             partition.load()
@@ -535,6 +538,9 @@ class ExtractionDataset(Dataset):
     def clinical_notes(self):
         return self.data['TEXT'].tolist()
 
+    def clinical_note_ids(self):
+        return self.data[self.CLINICAL_NOTE_ID_COLUMN].tolist()
+
     def clinical_note_column(self):
         return self.CLINICAL_NOTE_COLUMN
 
@@ -617,6 +623,34 @@ class VerbalizedExtractionDataset(Dataset):
             self.data.loc[mask, output_column] = None
         return self.data
 
+    def expand(self):
+        """
+        Expands the dataset by transforming the columns into the rows
+        """
+        self.filter_non_valid_generations()
+        final_dict = defaultdict(list)
+        for domain, column in zip(self.domains, self.columns):
+            other_columns = set(self.data.columns).difference(self.columns).difference(list(filter(lambda x: 'prompt' in x, self.data.columns)))
+            results = self.data[self.data[column].notna()]
+            for i, row in results.iterrows():
+                final_dict['SUMMARY'].append(row[column])
+                final_dict['DOMAIN'].append(domain)
+                final_dict['PROMPT'].append(row[f"{column.replace('verbalized', 'verbalizer_prompt')}"])
+                for other_col in other_columns:
+                    final_dict[other_col].append(row[other_col])
+
+        return pd.DataFrame.from_dict(final_dict)
+
+    def to_huggingface(self):
+        self.filter_non_valid_generations()
+        final_data = defaultdict(list)
+        for column in zip(self.columns):
+            results = self.data[column]
+            results = results[results.notna()]
+            results = results.tolist()
+            final_data[column] = results
+
+
     @staticmethod
     def valid_verbalized_column(column: str):
         elements = column.split('_')
@@ -631,7 +665,7 @@ class ComparisonExtractionDataset(ExtractionDataset):
 
     RESULT_COLUMNS = ['normal', 'beam', 'constrained']
 
-    def __init__(self, dataset_path: str, data: pd.DataFrame = None):
+    def __init__(self, dataset_path: str = None, data: pd.DataFrame = None):
         super().__init__(column='normal', dataset_path=dataset_path, data=data)
 
         self.verify()

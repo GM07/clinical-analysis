@@ -54,20 +54,23 @@ class Formatter:
 
     def __call__(self, x) -> Dict[str, str] | Dict[str, List[str]]:
         if isinstance(x['statement'], str):
-            return {'text': self.format_sample(x['context'], x['statement'], x['label'], x['explanation'])}
+            return {'text': self.format_sample(x['context'], x['statement'], x['label'] if self.training else None, x['explanation'] if self.training else None)}
 
         return {'text': self.format_batched(x)}
 
     def format_batched(self, samples: Dict[str, List[str]]) -> List[str]:
+        if samples['statement'] is None:
+            return []
 
         output_texts = []
         for i in range(len(samples['statement'])):
             context = samples['context'][i]
             statement = samples['statement'][i]
-            label = samples['label'][i]
+            label = None
             explanation = None
 
             if self.training:
+                label = samples['label'][i]
                 explanation = samples['explanation'][i] if samples['explanation'][i] else ''
 
             output_texts.append(self.format_sample(context, statement, label, explanation))
@@ -76,7 +79,7 @@ class Formatter:
 
 
     def format_sample(self, context, statement, label, explanation = None) -> str:
-        yes_no_label = 'YES' if label else 'NO'
+        yes_no_label = self.get_formatted_label(label)
 
         if self.training and not label:
             assert explanation is not None, f'When generating training samples, an explanation must be provided.\nStatement : {statement}\nLabel : {yes_no_label}'
@@ -97,3 +100,28 @@ class Formatter:
             output += self.tokenizer.eos_token
 
         return output
+
+    def get_formatted_label(self, label):
+        return 'YES' if label else 'NO'
+
+    def format_one_shot_with_sample(
+        self, 
+        context_one_shot, 
+        statement_one_shot, 
+        label_one_shot, 
+        explanation_one_shot, 
+        context,
+        statement) -> str:
+        formatted_sample = MEDHAL_FORMAT_INFERENCE_CONTEXT.format(context=context, statement=statement)
+        one_shot = self.format_one_shot(context_one_shot, statement_one_shot, label_one_shot, explanation_one_shot) + '\n'
+        return one_shot + formatted_sample
+
+
+    def format_one_shot(
+        self, 
+        context_one_shot, 
+        statement_one_shot, 
+        label_one_shot, 
+        explanation_one_shot) -> str:
+        return MEDHAL_FORMAT_TRAINING_CONTEXT.format(context=context_one_shot, statement=statement_one_shot, label=self.get_formatted_label(label_one_shot), explanation=explanation_one_shot)
+

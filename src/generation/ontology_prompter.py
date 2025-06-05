@@ -120,7 +120,7 @@ class OntologyPrompter:
                 'label': label,
                 'properties': properties
             })
-            
+
             prompts.append(prompt)
         return prompts
 

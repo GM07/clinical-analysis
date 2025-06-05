@@ -76,7 +76,7 @@ class OntologyConstrainedModel:
             return_tensors="pt",
             truncation=False, 
             pad_to_multiple_of=8,
-            add_special_tokens=False
+            add_special_tokens=True # Modified for llama-medicine
         )
         return model_input
 

@@ -4,11 +4,11 @@ import logging
 import pandas as pd
 
 from src.data.dataset import Dataset
-from src.data.augmented_clinical_notes import AugmentedClinicalNotes
-from src.data.medmcqa import MedMCQA
-from src.data.mednli import MedNLI
-from src.data.medqa import MedQA
-from src.data.sumpubmed import SumPubMed
+from src.data.med_hal.augmented_clinical_notes import AugmentedClinicalNotes
+from src.data.med_hal.medmcqa import MedMCQA
+from src.data.med_hal.mednli import MedNLI
+from src.data.med_hal.medqa import MedQA
+from src.data.med_hal.sumpubmed import SumPubMed
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 parser = ArgumentParser(description='Program that generates prompts from a dataset that is used to generate the Medical Hallucination Dataset (MHD) \
                         that will be sent to a bigger model that will generate samples for MHD')
 parser.add_argument('--dataset_path', type=str, required=True, help='Path to dataset that is used to generate MHD')
-parser.add_argument('--dataset', type=str, required=True, help='Type of dataset that is used to generate MHD (options: MedQA, MedMCQA, AugmentedClinicalNotes)')
+parser.add_argument('--dataset', type=str, required=True, help='Type of dataset that is used to generate MHD (options: MedQA, MedMCQA, AugmentedClinicalNotes, MedNLI, SumPubmed)')
 parser.add_argument('--out', type=str, required=True, help='Output path where the prompts will be saved')
 parser.add_argument('--partition', type=bool, required=False, default=False, help='If True, the prompts will be saved in a partition file')
 parser.add_argument('--size', type=int, required=False, default=1000, help='Size of a partition')

@@ -16,7 +16,7 @@ class Verbalizer:
         self.tokenizer_path = tokenizer_path
         self.pipeline = ModelDatasetInferencePipeline(model_path=self.model_path, tokenizer_path=self.tokenizer_path)
 
-    def verbalize_dataset(self, dataset: PrunedConceptDataset, system_prompt: str = None):
+    def verbalize_dataset(self, dataset: PrunedConceptDataset, system_prompt: str = None, apply_chat_template: bool = True):
         self.prompt_generator = PrunedConceptPromptGenerator(mimic=dataset.data, snomed=self.snomed, input_columns=self.input_columns)
         data = self.prompt_generator.generate_prompts()
 
@@ -28,7 +28,8 @@ class Verbalizer:
                 max_new_tokens=512, 
                 input_column=f'{input_column}_verbalizer_prompt', 
                 output_column=f'{input_column}_verbalized', 
-                system_prompt=system_prompt
+                system_prompt=system_prompt,
+                apply_chat_template=apply_chat_template
             )
         return hf_dataset
 

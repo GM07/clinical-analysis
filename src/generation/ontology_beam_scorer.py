@@ -84,7 +84,7 @@ class GenerationConfig:
         return instance
 
     @classmethod
-    def ontology_beam_search(cls, batch_size: int = 1, h_score: float = 1, p_score: float = 1, s_score: float = 0.01, use_rouge_for_restrictions: bool = True):
+    def ontology_beam_search(cls, batch_size: int = 1, h_score: float = 1, p_score: float = 1, s_score: float = 0.01, use_rouge_for_restrictions: bool = True, weight_model: float = 0.5, weight_boost: float = 0.5):
         """
         Returns an instance of this class leading to ontology-based beam search
         """
@@ -93,6 +93,7 @@ class GenerationConfig:
         instance.batch_size = batch_size
         instance.score_boost_factors = [h_score, p_score, s_score]
         instance.use_rouge_for_restrictions = use_rouge_for_restrictions
+        instance.score_weights = [weight_model, weight_boost]
         return instance
 
     # def with_hierarchy_score(self, hierarchy_score: float):
@@ -249,10 +250,12 @@ class OntologyBeamScorer(BeamSearchScorer):
             context: Context of the current beam
         """
         # We use every sentence of the clinical notes as a reference
-        references = self.get_clinical_note_from_index(index).split('. ')
+        clinical_note = self.get_clinical_note_from_index(index)
+        # references = clinical_note.split('. ')
 
         # Compute ROUGE-2
-        beam_boost = max(map(lambda x: self.rouge_scorer.score(context, x)['rouge2'].precision, references))
+        # beam_boost = max(map(lambda x: self.rouge_scorer.score(context, x)['rouge2'].recall, references))
+        beam_boost = self.rouge_scorer.score(clinical_note, context)['rouge2'].recall
         return beam_boost
 
     def get_properties_beam_boost(self, base_class_id: str, detected_class_id: str, context: str):

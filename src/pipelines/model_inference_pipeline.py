@@ -1,9 +1,9 @@
-from typing import List
+from typing import List, Optional
 import logging
 
 import torch
 from tqdm import tqdm
-from vllm import LLM, SamplingParams
+from vllm import LLM, RequestOutput, SamplingParams
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -66,19 +66,70 @@ class ModelInferencePipeline:
         self.llm = LLM(model=model_path, tokenizer=tokenizer_path, tensor_parallel_size=self.nb_gpus)
         self.tokenizer = load_tokenizer(tokenizer_path)
 
-    def run_inference(self, inputs: List, max_new_tokens: int = 512):
+    def run_inference(self, inputs: List, max_new_tokens: int = 512, verify_lengths: bool = False):
         """
         Runs inference on the inputs using vllm
 
         Args:
             inputs: List of inputs to run inference on
             max_new_tokens: Maximum number of new tokens to generate
+            verify_lengths: Whether to verify if prompts lengths are less than the max model length (creates errors with vLLM if that's the case, but adds overhead)
         """
-        params = SamplingParams(max_tokens=max_new_tokens)
 
-        outputs = self.llm.generate(inputs, sampling_params=params)
+        params = SamplingParams(max_tokens=max_new_tokens, temperature=0, top_k=-1)
+        if not verify_lengths:
 
-        return [output.outputs[0].text for output in outputs]
+            outputs = self.llm.generate(inputs, sampling_params=params)
+
+            return [output.outputs[0].text for output in outputs]
+
+        # Get the maximum model length from the vLLM engine's config
+        # This max_model_len is the total sequence length (prompt + generated tokens)
+        # The check vLLM performs is on the prompt token IDs length itself.
+        engine_model_config = self.llm.llm_engine.model_config
+        vllm_max_model_len = engine_model_config.max_model_len
+
+        results: List[Optional[str]] = [None] * len(inputs)
+
+        valid_prompts: List[str] = []
+        valid_indices: List[int] = []
+        
+        # Pre-filter prompts
+        for i, prompt_text in enumerate(inputs):
+            prompt_token_ids = self.tokenizer.encode(prompt_text)
+            
+            if len(prompt_token_ids) <= vllm_max_model_len - 1:
+                valid_prompts.append(prompt_text)
+                valid_indices.append(i)
+            else:
+                logger.warning(
+                    f"Prompt at index {i} (token length {len(prompt_token_ids)}) "
+                    f"exceeds vLLM max model length ({vllm_max_model_len}). Skipping."
+                )
+
+        if not valid_prompts:
+            logger.info("No valid prompts to process after length check.")
+            return results
+        
+        try:
+            # Generate outputs only for valid prompts
+            # vLLM's generate can handle a list of prompts
+            generated_outputs: List[RequestOutput] = self.llm.generate(valid_prompts, sampling_params=params)
+            
+            # Populate results for valid prompts at their original positions
+            for i, output_obj in enumerate(generated_outputs):
+                original_index = valid_indices[i]
+                if output_obj.outputs: # Check if there are any output sequences
+                    results[original_index] = output_obj.outputs[0].text.strip()
+                else:
+                    logger.warning(f"No output generated for prompt at original index {original_index} (valid prompt: '{valid_prompts[i][:50]}...').")
+                    results[original_index] = None # Explicitly set to None if no output
+        except Exception as e:
+            logger.error(f"Error during vLLM generation: {e}")
+            for original_idx in valid_indices:
+                results[original_idx] = None
+
+        return results
 
     def apply_chat_template(self, inputs: List):
         return apply_chat_template(self.tokenizer, inputs)

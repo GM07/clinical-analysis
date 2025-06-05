@@ -30,6 +30,7 @@ class DatasetInferencePipeline:
         saving_path: str = None,
         system_prompt: str = None,
         batch_size: int = None,
+        verify_lengths: bool = None,
     ):
         """
         Executes an inference pipeline on a dataset
@@ -40,14 +41,18 @@ class DatasetInferencePipeline:
             apply_chat_template: Whether to apply the chat template to the input
             input_column: Column to use for the input (default: 'input')
             output_column: Column to use for the output (default: 'output')
+            
             rows_to_chat: Function to convert rows to a chat. The function should take multiple rows and return a list of messages that can be sent to the LLM.
             On message is expected per row. This is useful if the chat template needs to be created from multiple columns (few-shot, etc).
+
             saving_path: Path to save the results to. If None, the results are not saved.
             batch_size: Batch size to use
+            verify_lengths: Whether to verify if prompts lengths are less than the max model length (creates errors with vLLM if that's the case, but adds overhead)
         """
         # Initialize results list with None values
         results = [None] * len(dataset)
-        assert input_column in dataset.column_names, f'The input column "{input_column}" is not in the dataset'
+        if rows_to_chat is None:
+            assert input_column in dataset.column_names, f'The input column "{input_column}" is not in the dataset'
         start_idx = 0
 
         # If output column exists, find first None value to resume from
@@ -96,6 +101,9 @@ class DatasetInferencePipeline:
             if batch_size:
                 args['batch_size'] = batch_size
 
+            if verify_lengths:
+                args['verify_lengths'] = verify_lengths
+
             output = self.run_inference(**args)
             
             output_idx = 0
@@ -140,7 +148,7 @@ class DatasetInferencePipeline:
             logger.info('Applying custom function to generate chat')
 
             def apply_function(rows):
-                chats = rows_to_chat(rows)
+                chats = self.apply_chat_template(rows_to_chat(rows))
                 return {tmp_column: chats}
             dataset = dataset.map(apply_function, batched=True)
         else:
@@ -174,6 +182,9 @@ class DatasetInferencePipeline:
             # Remove temporary column if it exists from a previous run
             dataset = dataset.remove_columns(tmp_column)
 
+        if self.get_tokenizer().chat_template is None:
+            logger.warning(f"Asked to apply chat template, but the tokenizer does not have a chat template. If you don't want to apply a chat template you can ignore this message")
+            return dataset[column]
 
         def create_chat_template_row_batch(batch):
             inputs_batch = batch[column]
@@ -203,6 +214,10 @@ class DatasetInferencePipeline:
         raise NotImplementedError('The apply_chat_template method not implemented by the subclass. If this function\
                                   does not need to be implemented, specify a rows_to_chat callable when calling the pipeline.')
 
+    def get_tokenizer(self):
+        raise NotImplementedError('The get_tokenizer method not implemented by the subclass.')
+
+
 class ModelDatasetInferencePipeline(DatasetInferencePipeline, ModelInferencePipeline):
     """
     Pipeline class for LLM inference using vLLM on a dataset's partition
@@ -213,6 +228,9 @@ class ModelDatasetInferencePipeline(DatasetInferencePipeline, ModelInferencePipe
 
     def apply_chat_template(self, inputs):
         return ModelInferencePipeline.apply_chat_template(self, inputs)
+
+    def get_tokenizer(self):
+        return self.tokenizer
 
 class HFModelDatasetInferencePipeline(DatasetInferencePipeline, HFModelInferencePipeline):
     """
@@ -225,6 +243,8 @@ class HFModelDatasetInferencePipeline(DatasetInferencePipeline, HFModelInference
     def apply_chat_template(self, inputs):
         return HFModelInferencePipeline.apply_chat_template(self, inputs)
 
+    def get_tokenizer(self):
+        return self.tokenizer
 
 class ModelPartitionedInferencePipeline(ModelInferencePipeline):
     """

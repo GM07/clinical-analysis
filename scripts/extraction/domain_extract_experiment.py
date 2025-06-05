@@ -36,9 +36,10 @@ def main():
     gen_config = methods[method]
 
     experiment.lock_partition(partition_path)
+    print('Processing partition at', partition_path)
 
     try:
-        partition = DatasetPartition.from_save(partition_path)
+        partition = DatasetPartition.from_save(partition_path, original_dataset_path=experiment.dataset)
         
         pipeline = PartitionedDomainExtractionPipeline(
             checkpoint_path=experiment.checkpoint,

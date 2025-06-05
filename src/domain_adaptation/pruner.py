@@ -61,7 +61,7 @@ class Pruner:
             if k in ancestors:
                 ancestors.remove(k)
             for ancestor in ancestors:
-                if ancestor in final_concepts:
+                if ancestor in final_concepts and v == final_concepts[ancestor]:
                     del final_concepts[ancestor]
 
         return final_concepts

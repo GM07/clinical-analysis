@@ -1,9 +1,6 @@
 from argparse import ArgumentParser
 import logging
-from typing import List
 
-from src.domain_adaptation.domain_class_frequency import DomainClassFrequency
-from src.domain_adaptation.pruner import Pruner
 from src.ontology.snomed import Snomed
 from src.domain_adaptation.verbalizer import Verbalizer
 from src.data.dataset import PrunedConceptDataset
@@ -15,8 +12,7 @@ logging.basicConfig(
     force=True # This ensures we override any existing logger configuration
 )
 
-parser = ArgumentParser(description='Program that prunes the extractions of a dataset. \
-                        The dataset will be saved in the same file as the input file, but with a new column containing the pruned extractions.')
+parser = ArgumentParser(description='Program that verbalizes pruned extractions')
 
 parser.add_argument('--dataset', type=str, nargs='+', required=True, help='Path to dataset file (csv file) containing the pruned extractions')
 parser.add_argument('--model_path', type=str, required=True, help='Path to huggingface model file')
@@ -25,6 +21,7 @@ parser.add_argument('--snomed', type=str, required=True, help='Path to SNOMED fi
 parser.add_argument('--snomed_cache', type=str, required=True, help='Path to SNOMED cache file')
 parser.add_argument('--output_dataset', type=str, nargs='+', required=True, help='Path to output dataset file')
 parser.add_argument('--system_prompt', type=str, default='default', help='System prompt to use for the inference (default or bio)')
+parser.add_argument('--apply_chat_template', type=bool, default=True, help='System prompt to use for the inference (default or bio)')
 
 def main():
 
@@ -49,7 +46,7 @@ def main():
 
     for dataset_path, output_path in zip(args.dataset, args.output_dataset):
         pruned_dataset = PrunedConceptDataset(columns=columns, dataset_path=dataset_path)
-        verbalized_dataset = verbalizer.verbalize_dataset(pruned_dataset, system_prompt)
+        verbalized_dataset = verbalizer.verbalize_dataset(pruned_dataset, system_prompt, apply_chat_template=args.apply_chat_template)
         verbalized_dataset.to_csv(output_path, index=False)
 
 if __name__ == '__main__':

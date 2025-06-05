@@ -1,23 +1,24 @@
+from collections import defaultdict
 import random
 from typing import Dict, List
 import nltk
 import re
-from datasets import load_from_disk, concatenate_datasets
+
+from datasets import load_from_disk, concatenate_datasets, Dataset
 
 from src.data.synthetic_dataset import SyntheticDataset
 
-PROMPT_TEMPLATE = """
-You will be given a text and a sentence that was extracted from the text.
+PROMPT_TEMPLATE = """You will be given a text and a sentence that was extracted from the text.
 Your task is to transform the sentence by introducing a deliberate inaccuracy. Strategies can include:
 - Changing numerical values
-- Inverting the meaning
+- Inverting the meaning of the sentence
 - Using antonyms
 - Negating the original statement
 
 Text: {text}
 Sentence: {sentence}
 
-Ensure the new sentence remains grammatically correct but semantically different from the original. Only output the transformed sentence without any additional text.
+Ensure the new sentence remains grammatically correct but semantically different from the original. The new sentence must contradict the original sentence. Only output the transformed sentence without any additional text.
 """
 
 class SumPubMed(SyntheticDataset):
@@ -43,7 +44,7 @@ class SumPubMed(SyntheticDataset):
         self.raw_data = concatenate_datasets([self.raw_data['train'], self.raw_data['test'], self.raw_data['dev']])
 
     def generate_prompts(self, output_path: str = None):
-        self.positive_data = self.generate_positive_samples()
+        self.positive_data: Dataset = self.generate_positive_samples()
         self.negative_data = self.generate_negative_samples_prompts()
 
         # concatenate_datasets will set the value of columns to None if the datasets have different columns
@@ -68,29 +69,31 @@ class SumPubMed(SyntheticDataset):
             self.duplicate_rows,
             desc="Duplicating rows",
             batched=True,
-            batch_size=1,
         )
 
         dataset = dataset.map(
             self.split_text_for_prompts, 
-            desc="Choosing random sentence from summary"
+            desc="Choosing random sentence from summary",
+            batched=True,
         )
 
         dataset = dataset.filter(
-            lambda example: example["sentence"] is not None, 
+            lambda example: len(example["sentence"]) > 0, 
             desc="Filtering out examples with not enough sentences"
         )
+
         dataset = dataset.map(
-            lambda example: {'input': PROMPT_TEMPLATE.format(text=example["text"], sentence=example["sentence"])},
-            desc="Generating chat messages"
+            lambda example: {'input': [PROMPT_TEMPLATE.format(text=text, sentence=sentence) for text, sentence in zip(example['text'], example['sentence'])]},
+            desc="Generating chat messages",
+            batched=True
         )
 
-        # Positive and negative data must have the same columns as they should be concatenable
-        # We put 'None' in a string so that when reading the file, the column's type is string
-        self.positive_data = self.positive_data.add_column('input', ['None'] * len(self.positive_data))
-        self.positive_data = self.positive_data.add_column('sentence', ['None'] * len(self.positive_data))
-        self.positive_data = self.positive_data.add_column('before', ['None'] * len(self.positive_data))
-        self.positive_data = self.positive_data.add_column('after', ['None'] * len(self.positive_data))
+        # Positive and negative data must have the same columns as they will be concatenated
+        # We put an empty string so that when reading the file, the column's type is string
+        self.positive_data = self.positive_data.add_column('input', [''] * len(self.positive_data))
+        self.positive_data = self.positive_data.add_column('sentence', [''] * len(self.positive_data))
+        self.positive_data = self.positive_data.add_column('before', [''] * len(self.positive_data))
+        self.positive_data = self.positive_data.add_column('after', [''] * len(self.positive_data))
 
         return dataset
 
@@ -124,29 +127,30 @@ class SumPubMed(SyntheticDataset):
         Split the text into sentences and return a list of sentences.
         """
 
-        if example["factual"] == True:
-            # We don't want to split the text for positive samples as we want to keep the original text
-            return {
-                'sentence': None,
-                'before': None,
-                'after': None
-            }
+        final_dict = defaultdict(list)
 
-        sentences = nltk.sent_tokenize(example["summary"])
-        if len(sentences) < 2:
-            return {
-                'sentence': None,
-                'before': None,
-                'after': None
-            }
-        
-        index = random.choice(range(len(sentences) - 1))
+        for i in range(len(example['factual'])):
 
-        return {
-            'sentence': sentences[index],
-            'before': ' '.join(sentences[:index]),
-            'after': ' '.join(sentences[index+1:])
-        }
+            if example['factual'][i] == True:
+                # We don't want to split the text for positive samples as we want to keep the original text
+                final_dict['sentence'].append('')
+                final_dict['before'].append('')
+                final_dict['after'].append('')
+                continue
+
+            sentences = nltk.sent_tokenize(example['summary'][i])
+            if len(sentences) < 2:
+                final_dict['sentence'].append('')
+                final_dict['before'].append('')
+                final_dict['after'].append('')
+                continue
+            
+            index = random.choice(range(len(sentences) - 1))
+            final_dict['sentence'].append(sentences[index])
+            final_dict['before'].append(' '.join(sentences[:index]))
+            final_dict['after'].append(' '.join(sentences[index+1:]))
+
+        return final_dict
 
     def get_random_sentence(self, text: str, min_length: int = 100):
         """
@@ -169,10 +173,40 @@ class SumPubMed(SyntheticDataset):
         return re.sub(self.KEYWORDS_PATTERN, '', text)
 
     def duplicate_rows(self, examples: Dict[str, List[str]]):
-        return {
+
+        dict = {
             'id': examples['id'] + examples['id'],
             'text': examples['text'] + examples['text'],
             'summary': examples['summary'] + examples['summary'],
-            'factual': [True, False]
+            'factual': [True] * len(examples['id']) + [False] * len(examples['id'])
         }
+
+        return dict
         
+
+class SumPubMedValidator:
+
+    PROMPT_TEMPLATE = """You are tasked to evaluate whether a sentence contradicts another. Answer YES if both sentences contradict each other and NO if they don't necessarly contradict each other.\nHere is the first sentence : {sentence1}\nHere is the second sentence : {sentence2}\n\nOnly answer with YES or NO. Do not generate any other explanation."""
+
+    def __init__(self, processed_path: str):
+        self.processed_path = processed_path
+
+        self.load()
+
+    def load(self):
+
+        if self.processed_path.endswith('.csv'):
+            self.dataset = Dataset.from_csv(self.processed_path)
+        else:
+            self.dataset = load_from_disk(self.processed_path)
+
+    def generate_validation_prompts(self):
+
+        def generate(x, template):
+            # All sentences in sumpubmed are lowercase
+            return {'prompt': [template.format(sentence1=sentence.lower(), sentence2=out.lower()) for sentence, out in zip(x['sentence'], x['output'])]}
+
+        return self.dataset.map(generate, batched=True, fn_kwargs={'template': self.PROMPT_TEMPLATE})
+
+
+

@@ -1,12 +1,16 @@
 
+from collections import defaultdict
 import re
+from typing import Dict, Tuple
 import uuid
 import nltk
 import nltk.translate.bleu_score
 from datasets import Dataset as HuggingFaceDataset, concatenate_datasets
 import logging
 
-from src.data.augmented_clinical_notes import AugmentedClinicalNotes
+from tqdm import tqdm
+
+from src.data.med_hal.augmented_clinical_notes import AugmentedClinicalNotes
 
 
 logger = logging.getLogger(__name__)
@@ -134,55 +138,94 @@ class MedHal:
             llm_output_column: Column name of the LLM output in the augmented clinical notes dataset.
         """
         dataset = HuggingFaceDataset.from_csv(path)
-        
-        def transform_acm_to_medhal(x):
-            if x[llm_output_column][0] == None or x[llm_output_column][1] == None:
-                return MedHal.augmented_clinical_notes_none_samples()
 
-            consecutive_samples = (x['factual'][0] and not x['factual'][1]) or (not x['factual'][0] and x['factual'][1])
-            if not consecutive_samples:
-                return MedHal.augmented_clinical_notes_none_samples()
+        def filter_dataset(hf_dataset: HuggingFaceDataset) -> HuggingFaceDataset:
+            chosen_indices = [] # row indices we will keep
+            label_seen = defaultdict(set) # (idx, key_path) -> {labels kept}
 
-            if x['idx'][0] != x['idx'][1]:
-                return MedHal.augmented_clinical_notes_none_samples()
+            for i in tqdm(range(len(hf_dataset)), total=len(hf_dataset)):
+                key = (hf_dataset[i]["idx"], hf_dataset[i]["key_path"])
+                label = bool(hf_dataset[i]["factual"])
+                if label not in label_seen[key]:
+                    # First time we see this label
+                    chosen_indices.append(i)
+                    label_seen[key].add(label)
 
-            if x['concept'][0] != x['concept'][1]:
-                return MedHal.augmented_clinical_notes_none_samples()
+            print('created label seens')
+            # Only keep pairs that have both labels
+            valid_keys = {k for k, labs in label_seen.items() if labs == {True, False}}
+            final_indices = [i for i in chosen_indices
+                            if (hf_dataset[i]["idx"], hf_dataset[i]["key_path"]) in valid_keys]
+            print('sorting and selecting')
 
-            if x['concept'][0] == 'sex':
-                factual_statement, hallucinated_statement = AugmentedClinicalNotes.fix_sex_generations(x[llm_output_column][0], x[llm_output_column][1])
-            else:
-                factual_statement = x[llm_output_column][0]
-                hallucinated_statement = x[llm_output_column][1]
+            return hf_dataset.select(sorted(final_indices))
 
-            if nltk.translate.bleu_score.sentence_bleu([factual_statement.split()], hallucinated_statement.split(), weights=(1, 1, 0, 0)) > 0.8:
-                factual_statement = 'None'
-                hallucinated_statement = 'None'
+        def acm_to_medhal(x):
+            # x should contain an even number of samples where even indices are factual and odd indices are not factual
+            assert len(x['concept']) % 2 == 0, 'Number of samples in batch must be even'
+            results = defaultdict(list)
+            results['id'].extend([str(uuid.uuid4()) for _ in range(len(x['idx']))])
+            results['inner_id'].extend([str(id) for id in x['idx']])
+            results['source'].extend(['acm'] * len(x['idx']))
+            results['synthetic'].extend([True] * len(x['idx']))
 
-            return {
-                'id': [str(uuid.uuid4()) for _ in range(len(x['idx']))],
-                'context': x['full_note'],
-                'statement': [factual_statement, hallucinated_statement],
-                'label': [True, False],
-                'explanation': [MedHal.FACTUAL_EXPLANATION, factual_statement],
-                'inner_id': [str(id) for id in x['idx']],
-                'source': ['acm'] * len(x['idx']),
-                'synthetic': [True, False]
-            }
-        
+            for i in range(len(x['concept']) // 2):
+                factual_i = i * 2
+                not_factual_i = factual_i + 1
+                
+                consecutive_samples = (x['factual'][factual_i] and not x['factual'][not_factual_i]) or (not x['factual'][factual_i] and x['factual'][not_factual_i])
+                none_sample = not consecutive_samples or (x['idx'][factual_i] != x['idx'][not_factual_i]) or (x['key_path'][factual_i] != x['key_path'][not_factual_i])
+
+                if none_sample:
+                    results['context'].extend(['None', 'None'])
+                    results['statement'].extend(['None', 'None'])
+                    results['label'].extend([None, None])
+                    results['explanation'].extend(['None', 'None'])
+                    continue
+
+                # if x['concept'][factual_i] == 'sex':
+                    # factual_statement, hallucinated_statement = AugmentedClinicalNotes.fix_sex_generations(x[llm_output_column][factual_i], x[llm_output_column][not_factual_i])
+                # else:
+                factual_statement = x[llm_output_column][factual_i]
+                hallucinated_statement = x[llm_output_column][not_factual_i]
+
+                results['context'].extend([x['full_note'][factual_i], x['full_note'][not_factual_i]])
+                results['statement'].extend([factual_statement, hallucinated_statement])
+                results['label'].extend([True, False])
+                results['explanation'].extend([MedHal.FACTUAL_EXPLANATION, factual_statement])
+            return results
+
+        dataset = dataset.filter(lambda x: [True if out is not None else False for out in x[llm_output_column]], batched=True)
+        not_valid = dataset.filter(lambda x: [True if out is None else False for out in x[llm_output_column]], batched=True)
+        dataset = filter_dataset(dataset)
         dataset = dataset.sort(['idx', 'key_path'])
-        dataset = dataset.filter(
-            lambda x: [True, True] if x[llm_output_column][0] != None and x[llm_output_column][1] != None else [False, False], 
-            desc="Filtering None samples",
-            batch_size=2,
-            batched=True
-        )
+        
+        print('len : ', len(dataset))
+
+        # valid_samples: Dict[Tuple[str, str, str], int] = {}
+        # for row in dataset.iter(batch_size=1):
+
+        #     key = (row['idx'], row['key_path'], row['factual'])
+        #     if key in valid_samples:
+        #         valid_samples[key] += -1 if row['factual']
+
+
+        # dataset = HuggingFaceDataset.from_pandas(dataset.to_pandas().drop_duplicates(['idx', 'key_path', 'factual']))
+        # print(dataset[0])
+        # print('after dropping duplicates : ', len(dataset))
+        
+        # dataset = dataset.filter(
+        #     lambda x: [True, True] if x[llm_output_column][0] != None and x[llm_output_column][1] != None else [False, False], 
+        #     desc="Filtering None samples",
+        #     batch_size=2,
+        #     batched=True
+        # )
         
         dataset = dataset.map(
-            transform_acm_to_medhal,
-            desc="Transforming ACM to MedHal",
+            acm_to_medhal,
+            desc="ACM to MedHal",
             batched=True,
-            batch_size=2,
+            batch_size=1000,
             remove_columns=dataset.column_names
         )
 
@@ -206,53 +249,79 @@ class MedHal:
         """
         dataset = HuggingFaceDataset.from_csv(path)
         
+
+        def filter_dataset(hf_dataset: HuggingFaceDataset) -> HuggingFaceDataset:
+            chosen_indices = [] # row indices we will keep
+            label_seen = defaultdict(set) # (idx, key_path) -> {labels kept}
+
+            for i in tqdm(range(len(hf_dataset)), total=len(hf_dataset)):
+                key = hf_dataset[i]['id']
+                label = bool(hf_dataset[i]['is_correct'])
+                if label not in label_seen[key]:
+                    # First time we see this label
+                    chosen_indices.append(i)
+                    label_seen[key].add(label)
+
+            print('created label seens')
+            # Only keep pairs that have both labels
+            valid_keys = {k for k, labs in label_seen.items() if labs == {True, False}}
+            final_indices = [i for i in chosen_indices
+                            if hf_dataset[i]['id'] in valid_keys]
+            print('sorting and selecting')
+
+            return hf_dataset.select(sorted(final_indices))
+
+
         def transform_medmcqa_to_medhal(x):
+            assert len(x['id']) % 2 == 0, 'Batch size must be even'
 
-            if x[llm_output_column][0] == 'None' or x[llm_output_column][1] == 'None':
-                return {
-                    'id': [None, None],
-                    'context': [None, None],
-                    'statement': [None, None],
-                    'label': [None, None],
-                    'explanation': [None, None],
-                    'inner_id': [None, None],
-                    'source': [None, None],
-                    'synthetic': [None, None]
-                }
+            final_dict = defaultdict(list)
+            final_dict['id'] = [str(uuid.uuid4()) for _ in range(len(x['id']))]
+            final_dict['inner_id'] = [str(id) for id in x['id']]
+            final_dict['source'] = ['medmcqa'] * len(x['id'])
+            final_dict['synthetic'] = [False] * len(x['id'])
 
-            assert x['is_correct'][0] and not x['is_correct'][1], "The first sample must be correct and the second one must be incorrect"
-            assert x['id'][0] == x['id'][1], "The first sample must be before the second one"
+            for i in range(len(x['id']) // 2):
+                factual_i = i * 2
+                not_factual_i = factual_i + 1
 
+                # assert x['is_correct'][factual_i] and not x['is_correct'][not_factual_i], "The first sample must be correct and the second one must be incorrect"
+                # assert x['id'][factual_i] == x['id'][not_factual_i], "The first sample must be before the second one"
 
-            # Determine if context is needed. To do so, we verify if the question has more than one sentence
-            # If it does, we remove the last sentence and use it as the context
-            # Otherwise, we use 'None' as the context
-            if len(nltk.sent_tokenize(x['question'][0])) > 1:
-                context = ' '.join(nltk.sent_tokenize(x['question'][0])[:-1])
-            else:
-                context = 'None'
+                # Determine if context is needed. To do so, we verify if the question has more than one sentence
+                # If it does, we remove the last sentence and use it as the context
+                # Otherwise, we use 'None' as the context
+                if len(nltk.sent_tokenize(x['question'][factual_i])) > 1:
+                    context = ' '.join(nltk.sent_tokenize(x['question'][factual_i])[:-1])
+                else:
+                    context = None
 
-            return {
-                'id': [str(uuid.uuid4()) for _ in range(len(x['id']))],
-                'context': [context] * len(x['id']),
-                'statement': x[llm_output_column],
-                'label': x['is_correct'],
-                 # Explanation of the factual statement is the explanation given in the dataset
-                 # Explanation of the non-factual statement is the true statement
-                'explanation': [x['explanation'][0], x[llm_output_column][0]],
-                'inner_id': [str(id) for id in x['id']],
-                'source': ['medmcqa'] * len(x['id']),
-                'synthetic': [True] * len(x['id'])
-            }
+                # return {
+                    # 'id': [str(uuid.uuid4()) for _ in range(len(x['id']))],
+                final_dict['context'].extend([context, context])
+                final_dict['statement'].extend([
+                    x[llm_output_column][factual_i], 
+                    x[llm_output_column][not_factual_i]
+                ])
+                final_dict['label'].extend([
+                    x['is_correct'][factual_i], 
+                    x['is_correct'][not_factual_i]
+                ])
+                # Explanation of the factual statement is the explanation given in the dataset
+                # Explanation of the non-factual statement is the true statement
+                explanation_factual = x['explanation'][factual_i] if x['explanation'][factual_i] is not None and len(x['explanation'][factual_i]) > 0 else MedHal.FACTUAL_EXPLANATION
+                final_dict['explanation'].extend([explanation_factual, x[llm_output_column][factual_i]])
+                # }
+            return final_dict
         
         dataset = dataset.filter(lambda x: x[llm_output_column] != None, desc="Filtering None samples")
-        dataset = dataset.sort(['id'])
+        dataset = filter_dataset(dataset)
 
         dataset = dataset.map(
             transform_medmcqa_to_medhal, 
             desc="Transforming MedMCQA to MedHal",
             batched=True,
-            batch_size=2,
+            batch_size=1000,
             remove_columns=dataset.column_names
         )
 
@@ -307,10 +376,31 @@ class MedHal:
         """
         dataset = HuggingFaceDataset.from_csv(path)
         
+        def filter_dataset(hf_dataset: HuggingFaceDataset) -> HuggingFaceDataset:
+            chosen_indices = [] # row indices we will keep
+            label_seen = defaultdict(set) # (idx, key_path) -> {labels kept}
+
+            for i in tqdm(range(len(hf_dataset)), total=len(hf_dataset)):
+                key = hf_dataset[i]['question'] + hf_dataset[i]['options']
+                label = bool(hf_dataset[i]['is_correct'])
+                if label not in label_seen[key]:
+                    # First time we see this label
+                    chosen_indices.append(i)
+                    label_seen[key].add(label)
+                
+            # Only keep pairs that have both labels
+            valid_keys = {k for k, labs in label_seen.items() if labs == {True, False}}
+            final_indices = [i for i in chosen_indices
+                            if hf_dataset[i]['question'] + hf_dataset[i]['options'] in valid_keys]
+
+            return hf_dataset.select(sorted(final_indices))
+
         def transform_medqa_to_medhal(x):
-            
+            if not x['is_correct'][0] or x['is_correct'][1]:
+                a = 2
+
             assert x['is_correct'][0] and not x['is_correct'][1], "The first sample must be correct and the second one must be incorrect"
-            assert int(x['id'][0]) == int(x['id'][1]) - 1, "The first sample must be before the second one"
+            # assert int(x['id'][0]) == int(x['id'][1]) - 1, "The first sample must be before the second one"
 
             return {
                 'id': [str(uuid.uuid4()) for _ in range(len(x['id']))],
@@ -320,8 +410,12 @@ class MedHal:
                 'explanation': [MedHal.FACTUAL_EXPLANATION, x[llm_output_column][0]],
                 'inner_id': [str(id) for id in x['id']],
                 'source': ['medqa'] * len(x['id']),
-                'synthetic': [True] * len(x['id'])
+                'synthetic': [False] * len(x['id'])
             }
+
+        dataset = filter_dataset(dataset)
+        dataset = dataset.sort(['question', 'options'])
+        print('Final length : ', len(dataset))
 
         dataset = dataset.map(
             transform_medqa_to_medhal, 
@@ -330,7 +424,7 @@ class MedHal:
             batch_size=2,
             remove_columns=dataset.column_names
         )
-        
+
         dataset = dataset.filter(MedHal.filter_multiple_sentence_statements, desc="Filtering multiple sentence statements")
 
         if output_path is not None:
@@ -339,7 +433,7 @@ class MedHal:
         return dataset
 
     @staticmethod
-    def from_splitted_sumpubmed(positive_path: str, negative_path: str, output_path: str = None, llm_output_column: str = 'OUTPUT'):
+    def from_splitted_sumpubmed(positive_path: str, negative_path: str, output_path: str = None, llm_output_column: str = 'output'):
         """
         Constructs the MedHal dataset from a splitted SumPubMed dataset. The dataset is splitted in the sense
         that positive and negative samples are in different files.
@@ -380,11 +474,11 @@ class MedHal:
 
             fake_summaries = []
             for before, output, after in zip(x['before'], x[llm_output_column], x['after']):
-                fake_summaries.append(f"{before} {output.lower()} {after}".strip())
+                fake_summaries.append(f"{before} {output.lower().strip()} {after}".strip())
 
             explanations = []
             for explanation in x['sentence']:
-                explanations.append(f"According to the source document, {explanation}")
+                explanations.append(f"According to the context, {explanation}")
 
             return {
                 'id': unique_ids,
@@ -397,12 +491,6 @@ class MedHal:
                 'synthetic': [True] * len(x['text'])
             }
         
-
-        negative_dataset = negative_dataset.filter(
-            lambda x: 'Here' not in x[llm_output_column] or 'transformed sentence' not in x[llm_output_column],
-            desc="Filtering negative samples"
-        )
-
         negative_ready_dataset = negative_dataset.map(
             generate_negative_samples,
             remove_columns=negative_dataset.column_names,

@@ -22,7 +22,7 @@ parser.add_argument('--tokenizer', type=str, required=False, default=None, help=
 parser.add_argument('--dataset', type=str, required=True, help='Path to dataset (csv or huggingface on disk)')
 parser.add_argument('--output_path', type=str, required=True, help='Path where the output dataset will be saved')
 parser.add_argument('--max_rows_to_process', type=int, default=None, help='Maximum number of rows to process')
-parser.add_argument('--rows_to_chat', type=bool, default=True, help='Rows to chat')
+parser.add_argument('--rows_to_chat', type=bool, default=False, help='Rows to chat')
 parser.add_argument('--input_column', type=str, default='PROMPT', help='Column to use as input')
 parser.add_argument('--output_column', type=str, default='OUTPUT', help='Column to use as output')
 parser.add_argument('--apply_chat_template', type=bool, default=True, help='Whether to apply the chat template or not')
