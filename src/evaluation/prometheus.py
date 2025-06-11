@@ -134,14 +134,15 @@ class PrometheusPromptGenerator:
         assert len(results_a) == len(results_b), f'The size of dataset A ({len(results_a)}) must be equal to the size of dataset B ({len(results_b)})'
 
         prompts = []
-        for no_permutation in methods_to_compare:
-            combinations = [(no_permutation[0], no_permutation[1]), (no_permutation[1], no_permutation[0])]
+        for combination in methods_to_compare:
+            datasets = [(results_a, results_b), (results_b, results_a)]
+            # combinations = [(no_permutation[0], no_permutation[1]), (no_permutation[1], no_permutation[0])]
             names_permutted = [(dataset_names[0], dataset_names[1]), (dataset_names[1], dataset_names[0])]
-            for names, combination in zip(names_permutted, combinations): # We compare both (a vs b) and (b vs a), because of prometheus' consistency problem
+            for names, dataset in zip(names_permutted, datasets): # We compare both (a vs b) and (b vs a), because of prometheus' consistency problem
                 for i in range(len(results_a)):
                     
-                    row_a = results_a.iloc[i]
-                    row_b = results_b.iloc[i]
+                    row_a = dataset[0].iloc[i]
+                    row_b = dataset[1].iloc[i]
 
                     clinical_note = row_a[clinical_note_column]
                     clinical_note_id_a = row_a[clinical_note_id_column]
