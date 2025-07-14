@@ -66,7 +66,7 @@ class ModelInferencePipeline:
         self.llm = LLM(model=model_path, tokenizer=tokenizer_path, tensor_parallel_size=self.nb_gpus)
         self.tokenizer = load_tokenizer(tokenizer_path)
 
-    def run_inference(self, inputs: List, max_new_tokens: int = 512, verify_lengths: bool = False):
+    def run_inference(self, inputs: List, max_new_tokens: int = 512, verify_lengths: bool = True):
         """
         Runs inference on the inputs using vllm
 

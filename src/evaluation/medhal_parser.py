@@ -111,7 +111,7 @@ class MedHalParser:
                 'prediction': False,
                 'explanation_gen': ''
             }
-                    
+
         if add_prompt:
             output = row[prompt_col] + row[output_col]
         else:

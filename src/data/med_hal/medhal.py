@@ -488,7 +488,7 @@ class MedHal:
                 'explanation': explanations,
                 'inner_id': [str(id) for id in x['id']],
                 'source': ['sumpubmed'] * len(x['text']),
-                'synthetic': [True] * len(x['text'])
+                'synthetic': [False] * len(x['text'])
             }
         
         negative_ready_dataset = negative_dataset.map(

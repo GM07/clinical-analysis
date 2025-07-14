@@ -68,8 +68,8 @@ per_device_eval_batch_size: {batch_size}
 per_device_train_batch_size: {batch_size}
 save_strategy: "steps"
 eval_strategy: "steps"
-save_steps: 500
-eval_steps: 500
+save_steps: 1000
+eval_steps: 1000
 dataset_num_proc: 48
 seed: 42"""
 

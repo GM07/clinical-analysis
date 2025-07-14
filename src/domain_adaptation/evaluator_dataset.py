@@ -22,7 +22,7 @@ class EvaluatorDataset:
 
         Args: 
             valid_domains: List of valid domains to include in the dataset
-            max_token_length: Maximum token length of the notes to include in the dataset
+            max_token_length: Maximum token length of the notes to include in the dataset (if < 0, will not filter length)
             max_nb_notes_per_domain: Maximum number of notes per domain to include in the dataset
         """
 
@@ -47,8 +47,9 @@ class EvaluatorDataset:
         logger.info(f"Number of notes left after filtering by domain and max number of notes per domain: {len(mimic_raw_filtered)}")
 
         # Compute length of the notes
-        mimic_raw_filtered['TOKEN_LENGTH'] = mimic_raw_filtered['TEXT'].apply(lambda x: len(self.tokenizer.encode(x)))
-        mimic_raw_filtered = mimic_raw_filtered[mimic_raw_filtered['TOKEN_LENGTH'] <= max_token_length]
+        if max_token_length > 0:
+            mimic_raw_filtered['TOKEN_LENGTH'] = mimic_raw_filtered['TEXT'].apply(lambda x: len(self.tokenizer.encode(x)))
+            mimic_raw_filtered = mimic_raw_filtered[mimic_raw_filtered['TOKEN_LENGTH'] <= max_token_length]
 
         logger.info(f"Number of notes left after filtering by token length: {len(mimic_raw_filtered)}")
         
